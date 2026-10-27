@@ -107,7 +107,7 @@ function mdToHtml(md) {
   while (cur.i < L.length) {
     var t = L[cur.i].trim();
     if (t === '') { cur.i++; continue; }
-    if (/^<(div|p|h1|h2|h3|ul|ol|blockquote|hr|img)\b/i.test(t)) { out.push(t); cur.i++; continue; }
+    if (/^<(div|p|h1|h2|h3|ul|ol|blockquote|hr|img|table)\b/i.test(t)) { out.push(t); cur.i++; continue; }
     if (t === '---') { out.push('<hr>'); cur.i++; continue; }
     var h = t.match(/^(#{1,3})\s+(.*)$/);
     if (h) {
@@ -188,6 +188,7 @@ function htmlToMd() {
       continue;
     }
     if (tag === 'UL' || tag === 'OL') { lines = lines.concat(listMd(el, 0, tag === 'OL')); continue; }
+    if (tag === 'TABLE') { lines.push(el.outerHTML); continue; }
     if (el.getAttribute('style')) { lines.push(el.outerHTML); continue; }
     var text = clean(ser(el));
     if (text === '') continue;
@@ -266,11 +267,27 @@ function caretIn(el) {
 function selBlock() {
   var blk = blockOf(saved ? saved.startContainer : null);
   if (blk) return blk;
-  return lastBlk && document.body.contains(lastBlk) ? lastBlk : null;
+  if (lastBlk && document.body.contains(lastBlk)) return lastBlk;
+  return null;
+}
+
+// 空笔记里点「标题」「字号」也得有东西可改
+function ensureBlock() {
+  var blk = selBlock();
+  if (blk) return blk;
+  var last = document.body.lastElementChild;
+  if (last && last.id !== 'slash' && /^(P|DIV|H1|H2|H3|BLOCKQUOTE|LI)$/.test(last.nodeName)) {
+    caretIn(last);
+    return last;
+  }
+  var p = document.createElement('p');
+  document.body.insertBefore(p, document.getElementById('slash'));
+  caretIn(p);
+  return p;
 }
 
 function block(tag) {
-  var blk = selBlock();
+  var blk = ensureBlock();
   if (!blk) return;
   var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
   if (blk.nodeName !== want) {
@@ -290,7 +307,7 @@ function unwrap(el) {
 }
 
 function wrapTag(tag) {
-  var blk = selBlock();
+  var blk = ensureBlock();
   if (!blk) return;
   var node = saved ? saved.startContainer : null;
   var up = node && node.nodeType === 1 ? node : node.parentNode;
@@ -307,7 +324,7 @@ function wrapTag(tag) {
 }
 
 function styleBlock(prop, value) {
-  var blk = selBlock();
+  var blk = ensureBlock();
   if (blk) blk.style[prop] = value;
 }
 
@@ -324,7 +341,7 @@ function setSize(px) {
 function code() { wrapTag('code'); }
 
 function list(ordered) {
-  var blk = selBlock();
+  var blk = ensureBlock();
   if (!blk) return;
   var tag = ordered ? 'OL' : 'UL';
   if (blk.nodeName === 'LI') {
@@ -390,8 +407,7 @@ function todo() {
     }
     return;
   }
-  var blk = selBlock();
-  if (!blk) return;
+  var blk = ensureBlock();
   var list = document.createElement('ul');
   list.className = 'todo';
   var item = document.createElement('li');
@@ -404,10 +420,9 @@ function todo() {
 
 // 插入的东西跟在当前段落后面，落成单独一段
 function insertAfter(node) {
-  var blk = selBlock(), p = document.createElement('p');
+  var blk = ensureBlock(), p = document.createElement('p');
   p.appendChild(node);
-  if (blk && blk.parentNode) blk.parentNode.insertBefore(p, blk.nextSibling);
-  else document.body.appendChild(p);
+  blk.parentNode.insertBefore(p, blk.nextSibling);
 }
 
 function insertImage(path) {
@@ -416,7 +431,7 @@ function insertImage(path) {
   insertAfter(img);
 }
 
-function insertAudio(path, label) {
+function insertLink(path, label) {
   var a = document.createElement('a');
   a.href = path;
   a.textContent = label;
@@ -438,9 +453,14 @@ function insertText(text) {
 }
 
 function insertHr() {
-  var blk = selBlock(), hr = document.createElement('hr');
-  if (blk && blk.parentNode) blk.parentNode.insertBefore(hr, blk.nextSibling);
-  else document.body.appendChild(hr);
+  var blk = ensureBlock(), hr = document.createElement('hr');
+  blk.parentNode.insertBefore(hr, blk.nextSibling);
+}
+
+function insertTable() {
+  var cell = '<td><br></td><td><br></td>';
+  insertAfter(document.createRange().createContextualFragment(
+    '<table><tbody><tr>' + cell + '</tr><tr>' + cell + '</tr></tbody></table>').firstChild);
 }
 
 var SLASH = [['标题', 'h1'], ['副标题', 'h2'], ['小标题', 'h3'], ['正文', 'p'],

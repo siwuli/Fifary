@@ -35,7 +35,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -57,11 +59,14 @@ import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,6 +94,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import io.github.fifary.data.Attach
 import io.github.fifary.data.Note
 import io.github.fifary.data.NotesStore
@@ -176,7 +182,7 @@ fun EditorScreen(
             return
         }
         val path = "${Attach.DIR}/${file.name}"
-        js("insertAudio(${JSONObject.quote(path)}, ${JSONObject.quote("录音 $seconds 秒")})")
+        js("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote("录音 $seconds 秒")})")
     }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -186,6 +192,33 @@ fun EditorScreen(
     }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startRecord()
+    }
+
+    var shot by remember { mutableStateOf<File?>(null) }
+    val photographLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val file = shot
+        shot = null
+        if (file == null) return@rememberLauncherForActivityResult
+        if (ok) js("insertImage(${JSONObject.quote("${Attach.DIR}/${file.name}")})") else file.delete()
+    }
+
+    fun photograph() {
+        val file = Attach.newImage(context)
+        shot = file
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.file", file)
+        runCatching { photographLauncher.launch(uri) }.onFailure {
+            shot = null
+            file.delete()
+        }
+    }
+
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "文件"
+            Attach.copy(context, uri)?.let { path ->
+                js("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote(name)})")
+            }
+        }
     }
 
     // 参考 app 气泡里的麦克风是「语音输入」：说的话直接变成正文
@@ -298,7 +331,8 @@ fun EditorScreen(
         ) {
             Column(
                 Modifier
-                    .fillMaxWidth()
+                    // 平时是居中的小胶囊，点开面板才铺满整宽（参考同样是底部整宽面板）
+                    .then(if (panel == Panel.NONE) Modifier.wrapContentWidth() else Modifier.fillMaxWidth())
                     .shadow(8.dp, RoundedCornerShape(32.dp))
                     .clip(RoundedCornerShape(32.dp))
                     .background(MaterialTheme.colorScheme.surface)
@@ -401,26 +435,100 @@ fun EditorScreen(
                             }
                         }
 
-                        Panel.INSERT -> Row(
-                            Modifier
-                                .height(64.dp)
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(Space.xxs),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            BubbleIcon(Icons.Filled.Photo, "图片") {
-                                pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        // 参考的「插入」面板：左上「关闭」、正中「添加」，下面 70dp 图标格子，8dp 间距
+                        Panel.INSERT -> Column(Modifier.padding(top = Space.xxs, bottom = Space.l)) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .padding(horizontal = Space.m),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable { panel = Panel.NONE }
+                                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                                ) {
+                                    Text("关闭", style = MaterialTheme.typography.titleSmall)
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Text("添加", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.weight(1f))
+                                Spacer(Modifier.size(64.dp, 1.dp))
                             }
-                            val recording = recorder != null
-                            BubbleIcon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, "录音") {
-                                if (recording) stopRecord() else askMic.launch(android.Manifest.permission.RECORD_AUDIO)
+                            ExtraRow(
+                                listOf(
+                                    "相册" to Icons.Filled.Photo,
+                                    "拍摄" to Icons.Filled.PhotoCamera,
+                                    "表格" to Icons.Filled.TableChart,
+                                    "文件" to Icons.Filled.Folder,
+                                ),
+                            ) { label ->
+                                when (label) {
+                                    "相册" -> pickImage.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                    )
+                                    "拍摄" -> photograph()
+                                    "表格" -> js("insertTable()")
+                                    "文件" -> pickFile.launch(arrayOf("*/*"))
+                                }
                             }
-                            BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { js("insertHr()") }
-                            BubbleIcon(Icons.Filled.Close, "收起") { panel = Panel.NONE }
+                            ExtraRow(
+                                listOf(
+                                    "录音" to Icons.Filled.Mic,
+                                    "分割线" to Icons.Filled.HorizontalRule,
+                                ),
+                            ) { label ->
+                                when (label) {
+                                    "录音" -> if (recorder != null) {
+                                        stopRecord()
+                                    } else {
+                                        askMic.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
+                                    "分割线" -> js("insertHr()")
+                                }
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// 参考 editor_toolbar_extra：childMinWidth 70dp、间距 8dp，图标格子 + 下方小标签
+@Composable
+private fun ExtraRow(items: List<Pair<String, ImageVector>>, onClick: (String) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Space.m, vertical = Space.xs),
+        horizontalArrangement = Arrangement.spacedBy(Space.xs),
+    ) {
+        items.forEach { (label, icon) ->
+            Column(
+                Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(68.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { onClick(label) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, contentDescription = label, modifier = Modifier.size(28.dp))
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
             }
         }
     }

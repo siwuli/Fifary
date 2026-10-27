@@ -25,4 +25,6 @@ object Attach {
     }.getOrNull()
 
     fun newAudio(context: Context): File = File(dir(context), "rec_${System.currentTimeMillis()}.m4a")
+
+    fun newImage(context: Context): File = File(dir(context), "img_${System.currentTimeMillis()}.jpg")
 }
