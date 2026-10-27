@@ -61,6 +61,7 @@ import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.SortMode
 import io.github.fifary.data.ViewMode
 import io.github.fifary.ui.components.AccentDot
+import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.BarAction
 import io.github.fifary.ui.components.ConfirmDialog
 import io.github.fifary.ui.components.FloatingActionBar
@@ -535,7 +536,7 @@ private fun MoveDialog(
                             .padding(vertical = Space.s),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AccentDot(size = 10)
+                        NotebookGlyph(size = 13)
                         Spacer(Modifier.width(Space.s))
                         Text(entry.name, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.weight(1f))

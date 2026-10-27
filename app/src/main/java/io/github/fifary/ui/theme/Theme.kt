@@ -60,9 +60,10 @@ private fun darkScheme(p: Palette): ColorScheme = darkColorScheme(
 private val AppTypography = Typography(
     headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 34.sp,
-        lineHeight = 42.sp,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 38.sp,
+        lineHeight = 46.sp,
+        letterSpacing = (-0.3).sp,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.Default,
@@ -78,9 +79,9 @@ private val AppTypography = Typography(
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 17.sp,
-        lineHeight = 24.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 19.sp,
+        lineHeight = 26.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
@@ -94,8 +95,8 @@ private val AppTypography = Typography(
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
+        fontSize = 14.sp,
+        lineHeight = 19.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,

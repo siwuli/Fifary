@@ -45,7 +45,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.FolderEntry
-import io.github.fifary.ui.components.AccentDot
+import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.BarAction
 import io.github.fifary.ui.components.CircleButton
 import io.github.fifary.ui.components.ConfirmDialog
@@ -103,7 +103,7 @@ fun CategoryManagerScreen(
 
     BackHandler(enabled = editing) { exitSelection() }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -176,7 +176,7 @@ fun CategoryManagerScreen(
                                 .padding(horizontal = Space.l, vertical = 18.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            AccentDot()
+                            NotebookGlyph(size = 20)
                             Spacer(Modifier.width(Space.s))
                             Text(
                                 text = entry.name,

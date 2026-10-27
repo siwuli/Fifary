@@ -57,7 +57,7 @@ import io.github.fifary.data.FolderEntry
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.SortMode
 import io.github.fifary.data.ViewMode
-import io.github.fifary.ui.components.AccentDot
+import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.Capsule
 import io.github.fifary.ui.components.CircleIconButton
 import io.github.fifary.ui.components.TextPill
@@ -206,8 +206,6 @@ fun ListHeader(
                             .graphicsLayer { alpha = (1f - collapse() * 2.2f).coerceIn(0f, 1f) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AccentDot(size = 6)
-                        Spacer(Modifier.width(Space.xs))
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.labelMedium,
@@ -359,7 +357,7 @@ private fun CategoryRow(
                 selected = folder == entry.path,
                 onClick = { onSelectCategory(entry.path) },
             ) {
-                AccentDot(size = 10)
+                NotebookGlyph(size = 15)
                 Spacer(Modifier.width(Space.xxs))
                 Text(entry.name, style = MaterialTheme.typography.labelMedium)
             }

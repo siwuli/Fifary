@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.Note
@@ -43,6 +44,19 @@ import java.util.Locale
 
 private const val STAGGER_LIMIT = 12
 private val DateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
+private const val MINUTE = 60_000L
+
+// 时间说法跟参考 App 一致：刚记的用相对时间，旧的用日期
+internal fun timeLabel(at: Long): String {
+    val diff = System.currentTimeMillis() - at
+    return when {
+        diff < MINUTE -> "刚刚"
+        diff < 60 * MINUTE -> "${diff / MINUTE} 分钟前"
+        diff < 24 * 60 * MINUTE -> "${diff / (60 * MINUTE)} 小时前"
+        diff < 48 * 60 * MINUTE -> "昨天"
+        else -> DateFormat.format(Date(at))
+    }
+}
 
 @Composable
 fun NoteCard(
@@ -92,17 +106,9 @@ fun NoteCard(
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (note.pinned) {
-                            Box(
-                                Modifier
-                                    .size(6.dp)
-                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
                         Text(
                             text = note.name,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = if (grid) 2 else 1,
                             overflow = TextOverflow.Ellipsis,
@@ -114,7 +120,7 @@ fun NoteCard(
                         val line = if (note.deletedAt > 0L) {
                             "删除于 ${DateFormat.format(Date(note.deletedAt))}"
                         } else {
-                            "${DateFormat.format(Date(note.updatedAt))}  $preview"
+                            "${timeLabel(note.updatedAt)}  $preview"
                         }
                         if (line.isNotEmpty()) {
                             Text(
@@ -152,7 +158,7 @@ fun NoteCard(
                     Spacer(Modifier.weight(1f))
                 }
                 Text(
-                    text = DateFormat.format(Date(note.updatedAt)),
+                    text = timeLabel(note.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(top = Space.xs),

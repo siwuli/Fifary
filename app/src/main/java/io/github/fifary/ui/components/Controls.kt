@@ -1,6 +1,7 @@
 package io.github.fifary.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,7 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size as GeomSize
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.fifary.ui.theme.Elev
@@ -88,6 +93,25 @@ fun TextPill(text: String, onClick: () -> Unit) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, style = MaterialTheme.typography.labelMedium)
         }
+    }
+}
+
+// 分组图标：参考 App 里那个小笔记本（正片 + 书脊），比纯色块更像"分组"
+@Composable
+fun NotebookGlyph(size: Int = 14) {
+    val body = MaterialTheme.colorScheme.primary
+    val spine = lerp(body, Color.Black, 0.28f)
+    Canvas(Modifier.size(size.dp)) {
+        val w = this.size.width
+        val h = this.size.height
+        val r = CornerRadius(w * 0.24f)
+        drawRoundRect(body, Offset(w * 0.04f, 0f), GeomSize(w * 0.92f, h), r)
+        drawRoundRect(
+            spine,
+            Offset(w * 0.20f, h * 0.14f),
+            GeomSize(w * 0.08f, h * 0.72f),
+            CornerRadius(w * 0.04f),
+        )
     }
 }
 
