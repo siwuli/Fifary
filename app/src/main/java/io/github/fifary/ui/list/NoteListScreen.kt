@@ -77,8 +77,6 @@ fun NoteListScreen(
     folder: String,
     categories: List<FolderEntry>,
     notes: List<Note>,
-    totalNotes: Int,
-    trashNotes: Int,
     viewMode: ViewMode,
     sortMode: SortMode,
     onSelectCategory: (String) -> Unit,
@@ -112,7 +110,6 @@ fun NoteListScreen(
     var askPurge by remember { mutableStateOf(false) }
     var askSecret by remember { mutableStateOf(false) }
     var moveOpen by remember { mutableStateOf(false) }
-    var pickerOpen by remember { mutableStateOf(false) }
 
     val selectionMode = editing
 
@@ -375,7 +372,6 @@ fun NoteListScreen(
                     exitSelection()
                     editing = true
                 },
-                onOpenCategoryPicker = { pickerOpen = true },
                 onCompactChange = { compactHeight = with(density) { it.toDp() } },
                 onHeightChange = { headerHeight = with(density) { it.toDp() } },
             )
@@ -474,18 +470,6 @@ fun NoteListScreen(
         )
     }
 
-    if (pickerOpen) {
-        CategoryPicker(
-            categories = categories,
-            folder = folder,
-            totalNotes = totalNotes,
-            trashNotes = trashNotes,
-            secretEnabled = PrivateVault.enabled,
-            onDismiss = { pickerOpen = false },
-            onPick = { pickerOpen = false; onSelectCategory(it) },
-        )
-    }
-
     if (moveOpen) {
         MoveDialog(
             categories = categories,
@@ -531,69 +515,6 @@ private fun SectionHeader(
             }
         }
     }
-}
-
-// 收起顶栏后点标题旁的小箭头就弹这个：不滚回顶部也能换分类
-@Composable
-private fun CategoryPicker(
-    categories: List<FolderEntry>,
-    folder: String,
-    totalNotes: Int,
-    trashNotes: Int,
-    secretEnabled: Boolean,
-    onDismiss: () -> Unit,
-    onPick: (String) -> Unit,
-) {
-    val rows = buildList {
-        add(Triple("", "全部笔记", totalNotes))
-        if (secretEnabled) add(Triple(NotesStore.PRIVATE, "私密笔记", null))
-        categories.forEach { add(Triple(it.path, it.name, it.noteCount)) }
-        add(Triple(NotesStore.TRASH, "最近删除", trashNotes))
-    }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(Radius.sheet),
-        containerColor = MaterialTheme.colorScheme.surface,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        title = { Text("切换分类", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column(Modifier.fillMaxWidth()) {
-                rows.forEach { (path, name, count) ->
-                    val current = path == folder
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .springPressable(onClick = { onPick(path) })
-                            .padding(vertical = Space.s),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (count != null) {
-                            Text(
-                                text = "$count",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                            )
-                        }
-                        if (current) {
-                            Spacer(Modifier.width(Space.xs))
-                            Text(
-                                text = "当前",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextPill("取消", onDismiss) },
-    )
 }
 
 @Composable

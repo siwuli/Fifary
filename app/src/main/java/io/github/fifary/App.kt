@@ -52,8 +52,6 @@ fun FifaryApp() {
                         folder = folder,
                         categories = NotesStore.folders(),
                         notes = notes,
-                        totalNotes = NotesStore.notesFor("").size,
-                        trashNotes = NotesStore.notesFor(NotesStore.TRASH).size,
                         viewMode = SettingsStore.viewMode,
                         sortMode = sortMode,
                         // 切分组替换根页面，不堆栈：返回键始终是"退出"
