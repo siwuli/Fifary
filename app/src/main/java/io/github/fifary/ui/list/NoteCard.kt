@@ -80,11 +80,7 @@ fun NoteCard(
                 translationY = (1f - appear) * 12.dp.toPx()
             },
         shape = RoundedCornerShape(Radius.card),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             if (grid) {
@@ -115,9 +111,14 @@ fun NoteCard(
 
                     if (!grid) {
                         val preview = previewOf(note.body)
-                        if (preview.isNotEmpty()) {
+                        val line = if (note.deletedAt > 0L) {
+                            "删除于 ${DateFormat.format(Date(note.deletedAt))}"
+                        } else {
+                            "${DateFormat.format(Date(note.updatedAt))}  $preview"
+                        }
+                        if (line.isNotEmpty()) {
                             Text(
-                                text = "${DateFormat.format(Date(note.updatedAt))}  $preview",
+                                text = line,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,

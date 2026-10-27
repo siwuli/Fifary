@@ -1,9 +1,8 @@
 package io.github.fifary.ui.list
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,45 +15,61 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.FolderEntry
 import io.github.fifary.data.Note
+import io.github.fifary.data.NotesStore
+import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.SortMode
 import io.github.fifary.data.ViewMode
 import io.github.fifary.ui.components.AccentDot
-import io.github.fifary.ui.components.CircleButton
+import io.github.fifary.ui.components.BarAction
+import io.github.fifary.ui.components.ConfirmDialog
+import io.github.fifary.ui.components.FloatingActionBar
 import io.github.fifary.ui.components.TextPill
 import io.github.fifary.ui.components.rememberHaptics
+import io.github.fifary.ui.components.rememberSecretGate
+import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Elev
+import io.github.fifary.ui.theme.Radius
 import io.github.fifary.ui.theme.Space
-import kotlinx.coroutines.delay
 
 @Composable
 fun NoteListScreen(
@@ -63,183 +78,473 @@ fun NoteListScreen(
     notes: List<Note>,
     viewMode: ViewMode,
     sortMode: SortMode,
-        onSelectCategory: (String) -> Unit,
+    onSelectCategory: (String) -> Unit,
     onOpenNote: (Note) -> Unit,
     onCreate: () -> Unit,
+    onMove: (Set<String>, String) -> Unit,
     onDelete: (Set<String>) -> Unit,
+    onRestore: (Set<String>) -> Unit,
+    onPurge: (Set<String>) -> Unit,
     onPin: (Set<String>) -> Unit,
+    onSetSecret: (Set<String>, Boolean) -> Unit,
     onToggleView: () -> Unit,
     onSelectSort: (SortMode) -> Unit,
     onOpenCategories: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val haptics = rememberHaptics()
+    val gate = rememberSecretGate()
+    val inTrash = folder == NotesStore.TRASH
+    val privateView = folder == NotesStore.PRIVATE
+    val locked = privateView && !PrivateVault.unlocked
+
+    var editing by remember(folder) { mutableStateOf(false) }
     var selected by remember(folder) { mutableStateOf(emptySet<String>()) }
     var searchOpen by remember(folder) { mutableStateOf(false) }
     var query by remember(folder) { mutableStateOf("") }
-    val selectionMode = selected.isNotEmpty()
+    var pinnedCollapsed by remember(folder) { mutableStateOf(false) }
+    var headerHeight by remember { mutableStateOf(0.dp) }
+    var askDelete by remember { mutableStateOf(false) }
+    var askPurge by remember { mutableStateOf(false) }
+    var askSecret by remember { mutableStateOf(false) }
+    var moveOpen by remember { mutableStateOf(false) }
 
-    // 入场错峰只在 App 首次进入时播一次，切分类不再逐项延迟（否则"不跟手"）
-    var introDone by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(400)
-        introDone = true
+    val selectionMode = editing
+
+    fun toggle(path: String) {
+        haptics.toggle()
+        editing = true
+        selected = if (path in selected) selected - path else selected + path
     }
 
-    // 切分类时整块内容快速淡入，替代逐项动画
-    val contentAlpha = remember { Animatable(1f) }
-    LaunchedEffect(folder) {
-        contentAlpha.snapTo(0.55f)
-        contentAlpha.animateTo(1f, tween(150))
+    fun exitSelection() {
+        editing = false
+        selected = emptySet()
     }
 
-    BackHandler(enabled = selectionMode) { selected = emptySet() }
+    LaunchedEffect(Unit) { NotesStore.purgeExpiredTrash() }
+    BackHandler(enabled = selectionMode) { exitSelection() }
+    BackHandler(enabled = !selectionMode && searchOpen) {
+        searchOpen = false
+        query = ""
+    }
 
-    val shownNotes = if (query.isBlank()) notes else notes.filter { it.name.contains(query, true) }
-    val total = shownNotes.size
-    val allSelected = shownNotes.isNotEmpty() && shownNotes.all { it.path in selected }
+    // 搜索标题 + 正文
+    val shown = if (query.isBlank()) notes else notes.filter { NotesStore.matches(it, query) }
+    val pinned = if (pinnedCollapsed) emptyList() else shown.filter { it.pinned }
+    val others = shown.filter { !it.pinned }
+    val hasPinned = shown.any { it.pinned }
+    val allSelected = shown.isNotEmpty() && shown.all { it.path in selected }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            // 必须给底色：自定义顶栏不透明，否则列表滚动时会从标题后面透出来
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
-            ) {
-                if (selectionMode) {
-                    SelectionHeader(
-                        count = selected.size,
-                        allSelected = allSelected,
-                        onCancel = { selected = emptySet() },
-                        onSelectAll = {
-                            haptics.toggle()
-                            selected = if (allSelected) emptySet() else shownNotes.map { it.path }.toSet()
-                        },
-                    )
-                } else {
-                    ListHeader(
-                        title = if (folder.isEmpty()) "笔记" else folder,
-                        subtitle = "共 $total 项 · 仅本地",
-                                                searchOpen = searchOpen,
-                        query = query,
-                        onQueryChange = { query = it },
-                        onToggleSearch = {
-                            searchOpen = !searchOpen
-                            if (!searchOpen) query = ""
-                        },
-                        categories = categories,
-                        folder = folder,
-                        onSelectCategory = onSelectCategory,
-                        onOpenCategories = onOpenCategories,
-                        viewMode = viewMode,
-                        sortMode = sortMode,
-                        onToggleView = onToggleView,
-                        onSelectSort = onSelectSort,
-                        onOpenSettings = onOpenSettings,
-                    )
-                }
-                Spacer(Modifier.height(Space.s))
-            }
-        },
-        bottomBar = {
-            if (selectionMode) {
-                SelectionActionBar(
-                    onPin = {
-                        haptics.toggle()
-                        onPin(selected)
-                        selected = emptySet()
-                    },
-                    onDelete = {
-                        haptics.toggle()
-                        onDelete(selected)
-                        selected = emptySet()
-                    },
-                )
-            }
-        },
-        floatingActionButton = {
-            if (!selectionMode) {
-                FloatingNewButton(onCreate)
-            }
-        },
-    ) { inner ->
-        val contentPadding = PaddingValues(
-            start = Space.l,
-            end = Space.l,
-            top = inner.calculateTopPadding() + Space.xxs,
-            bottom = inner.calculateBottomPadding() + 96.dp,
-        )
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = contentAlpha.value }
-        ) {
-            if (total == 0) {
-                EmptyState(
-                    modifier = Modifier.fillMaxSize().padding(inner),
-                    text = if (query.isBlank()) "这个分组还没有笔记" else "没有匹配的笔记",
-                )
-            } else if (viewMode == ViewMode.GRID) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = contentPadding,
-                    horizontalArrangement = Arrangement.spacedBy(Space.xs),
-                    verticalArrangement = Arrangement.spacedBy(Space.xs),
-                ) {
-                    gridItemsIndexed(
-                        items = shownNotes,
-                        key = { _, note -> note.path },
-                        contentType = { _, _ -> "note" },
-                    ) { index, note ->
-                        NoteCard(
-                            modifier = Modifier.animateItem(),
-                            note = note,
-                            grid = true,
-                            selectionMode = selectionMode,
-                            selected = note.path in selected,
-                            index = index,
-                            animateIn = !introDone,
-                            onOpen = { onOpenNote(note) },
-                            onLongPress = {
-                                selected = if (note.path in selected) selected - note.path else selected + note.path
-                            },
-                        )
-                    }
-                }
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val density = LocalDensity.current
+    val collapseThreshold = with(density) { 72.dp.toPx() }
+    val collapse = remember(viewMode) {
+        derivedStateOf {
+            val grid = viewMode == ViewMode.GRID
+            val index = if (grid) gridState.firstVisibleItemIndex else listState.firstVisibleItemIndex
+            val offset = if (grid) {
+                gridState.firstVisibleItemScrollOffset
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = contentPadding,
-                    verticalArrangement = Arrangement.spacedBy(Space.xs),
-                ) {
-                    itemsIndexed(
-                        items = shownNotes,
-                        key = { _, note -> note.path },
-                        contentType = { _, _ -> "note" },
-                    ) { index, note ->
-                        NoteCard(
-                            modifier = Modifier.animateItem(),
-                            note = note,
-                            grid = false,
-                            selectionMode = selectionMode,
-                            selected = note.path in selected,
-                            index = index,
-                            animateIn = !introDone,
-                            onOpen = { onOpenNote(note) },
-                            onLongPress = {
-                                selected = if (note.path in selected) selected - note.path else selected + note.path
-                            },
-                        )
+                listState.firstVisibleItemScrollOffset
+            }
+            // 滑过第一项之后 offset 会归零，所以用 index 兜住，避免标题又"长"回去
+            if (index > 0) 1f else (offset / collapseThreshold).coerceIn(0f, 1f)
+        }
+    }
+
+    val title = when (folder) {
+        "" -> "笔记"
+        NotesStore.TRASH -> "最近删除"
+        NotesStore.PRIVATE -> "私密笔记"
+        else -> folder
+    }
+    val subtitle = when {
+        query.isNotBlank() -> "找到 ${shown.size} 篇"
+        inTrash -> "${shown.size} 篇 · 30 天后自动清理"
+        privateView -> "${shown.size} 篇 · 已加密"
+        else -> "${shown.size} 篇笔记"
+    }
+
+    // 底部多留一屏：内容很少也要能滑，滑动才能把标题带上去
+    val tail = with(LocalConfiguration.current) { (screenHeightDp * 0.45f).dp }
+
+    Box(Modifier.fillMaxSize()) {
+        if (locked) {
+            LockedState(Modifier.fillMaxSize(), onUnlock = { gate.run { } })
+        } else if (shown.isEmpty()) {
+            EmptyState(
+                modifier = Modifier.fillMaxSize(),
+                text = when {
+                    query.isNotBlank() -> "没有匹配的笔记"
+                    inTrash -> "最近删除是空的"
+                    else -> "这个分组还没有笔记"
+                },
+            )
+        } else if (viewMode == ViewMode.GRID) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = Space.l,
+                    end = Space.l,
+                    top = headerHeight + Space.s,
+                    bottom = tail,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(Space.xs),
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                if (hasPinned) {
+                    item(key = "h-pin", span = { GridItemSpan(maxLineSpan) }) {
+                        SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
+                            haptics.toggle()
+                            pinnedCollapsed = !pinnedCollapsed
+                        }
                     }
+                }
+                gridItemsIndexed(items = pinned, key = { _, n -> n.path }) { index, note ->
+                    NoteCard(
+                        modifier = Modifier.animateItem(),
+                        note = note,
+                        grid = true,
+                        selectionMode = selectionMode,
+                        selected = note.path in selected,
+                        index = index,
+                        animateIn = false,
+                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                        onLongPress = {
+                            if (selectionMode) {
+                                toggle(note.path)
+                            } else {
+                                haptics.longPress()
+                                editing = true
+                                selected = setOf(note.path)
+                            }
+                        },
+                    )
+                }
+                if (hasPinned) {
+                    item(key = "h-other", span = { GridItemSpan(maxLineSpan) }) {
+                        SectionHeader("其他", collapsible = false, collapsed = false) {}
+                    }
+                }
+                gridItemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
+                    NoteCard(
+                        modifier = Modifier.animateItem(),
+                        note = note,
+                        grid = true,
+                        selectionMode = selectionMode,
+                        selected = note.path in selected,
+                        index = index,
+                        animateIn = false,
+                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                        onLongPress = {
+                            if (selectionMode) {
+                                toggle(note.path)
+                            } else {
+                                haptics.longPress()
+                                editing = true
+                                selected = setOf(note.path)
+                            }
+                        },
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = Space.l,
+                    end = Space.l,
+                    top = headerHeight + Space.s,
+                    bottom = tail,
+                ),
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                if (hasPinned) {
+                    item(key = "h-pin") {
+                        SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
+                            haptics.toggle()
+                            pinnedCollapsed = !pinnedCollapsed
+                        }
+                    }
+                }
+                itemsIndexed(items = pinned, key = { _, n -> n.path }) { index, note ->
+                    NoteCard(
+                        modifier = Modifier.animateItem(),
+                        note = note,
+                        grid = false,
+                        selectionMode = selectionMode,
+                        selected = note.path in selected,
+                        index = index,
+                        animateIn = false,
+                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                        onLongPress = {
+                            if (selectionMode) {
+                                toggle(note.path)
+                            } else {
+                                haptics.longPress()
+                                editing = true
+                                selected = setOf(note.path)
+                            }
+                        },
+                    )
+                }
+                if (hasPinned) {
+                    item(key = "h-other") {
+                        SectionHeader("其他", collapsible = false, collapsed = false) {}
+                    }
+                }
+                itemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
+                    NoteCard(
+                        modifier = Modifier.animateItem(),
+                        note = note,
+                        grid = false,
+                        selectionMode = selectionMode,
+                        selected = note.path in selected,
+                        index = index,
+                        animateIn = false,
+                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                        onLongPress = {
+                            if (selectionMode) {
+                                toggle(note.path)
+                            } else {
+                                haptics.longPress()
+                                editing = true
+                                selected = setOf(note.path)
+                            }
+                        },
+                    )
                 }
             }
         }
+
+        // 悬浮顶栏：永远在最上层，内容从它下面滑过去
+        ListHeader(
+            title = title,
+            subtitle = subtitle,
+            collapse = { collapse.value },
+            selectionMode = selectionMode,
+            selectionText = if (allSelected) "已选择全部项" else "已选择 ${selected.size} 项",
+            searchOpen = searchOpen,
+            query = query,
+            onQueryChange = { query = it },
+            onToggleSearch = {
+                searchOpen = !searchOpen
+                if (!searchOpen) query = ""
+            },
+            onCancelSelection = { exitSelection() },
+            onSelectAll = {
+                haptics.toggle()
+                selected = if (allSelected) emptySet() else shown.map { it.path }.toSet()
+            },
+            allSelected = allSelected,
+            categories = categories,
+            folder = folder,
+            secretEnabled = PrivateVault.enabled,
+            onSelectCategory = onSelectCategory,
+            onOpenCategories = onOpenCategories,
+            viewMode = viewMode,
+            sortMode = sortMode,
+            onToggleView = onToggleView,
+            onSelectSort = onSelectSort,
+            onOpenSettings = onOpenSettings,
+            onEnterEdit = {
+                exitSelection()
+                editing = true
+            },
+            onHeightChange = { headerHeight = with(density) { it.toDp() } },
+        )
+
+        if (selectionMode) {
+            FloatingActionBar(
+                actions = when {
+                    inTrash -> listOf(
+                        BarAction("恢复", enabled = selected.isNotEmpty(), icon = Icons.Filled.Refresh, onClick = {
+                            haptics.toggle()
+                            onRestore(selected)
+                            exitSelection()
+                        }),
+                        BarAction("彻底删除", enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askPurge = true }),
+                    )
+                    privateView -> listOf(
+                        BarAction("取消私密", enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = {
+                            val key = PrivateVault.key
+                            if (key != null) {
+                                haptics.toggle()
+                                onSetSecret(selected, false)
+                                exitSelection()
+                            }
+                        }),
+                        BarAction("删除", enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askDelete = true }),
+                    )
+                    else -> listOf(
+                        BarAction("移动", enabled = selected.isNotEmpty(), icon = Icons.AutoMirrored.Filled.ExitToApp, onClick = { moveOpen = true }),
+                        BarAction("设为私密", enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = { askSecret = true }),
+                        BarAction("置顶", enabled = selected.isNotEmpty(), icon = Icons.Filled.Star, onClick = {
+                            haptics.toggle()
+                            onPin(selected)
+                            exitSelection()
+                        }),
+                        BarAction("删除", enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askDelete = true }),
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = Space.m)
+                    .fillMaxWidth(0.92f),
+            )
+        } else {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = Space.l, bottom = Space.xl)
+            ) {
+                FloatingNewButton(onCreate)
+            }
+        }
     }
+
+    if (askDelete) {
+        ConfirmDialog(
+            title = "删除 ${selected.size} 篇笔记？",
+            text = "会移到最近删除，30 天内都能恢复。",
+            confirmText = "删除",
+            onDismiss = { askDelete = false },
+            onConfirm = {
+                haptics.toggle()
+                askDelete = false
+                onDelete(selected)
+                exitSelection()
+            },
+        )
+    }
+
+    if (askPurge) {
+        ConfirmDialog(
+            title = "彻底删除 ${selected.size} 篇？",
+            text = "不会进最近删除，删了就找不回来了。",
+            confirmText = "彻底删除",
+            onDismiss = { askPurge = false },
+            onConfirm = {
+                haptics.toggle()
+                askPurge = false
+                onPurge(selected)
+                exitSelection()
+            },
+        )
+    }
+
+    if (askSecret) {
+        ConfirmDialog(
+            title = "设为私密？",
+            text = "${selected.size} 篇笔记会加密保存，之后查看要先输密码。",
+            confirmText = "设为私密",
+            onDismiss = { askSecret = false },
+            onConfirm = {
+                askSecret = false
+                val paths = selected
+                gate.run {
+                    haptics.toggle()
+                    onSetSecret(paths, true)
+                    exitSelection()
+                }
+            },
+        )
+    }
+
+    if (moveOpen) {
+        MoveDialog(
+            categories = categories,
+            onDismiss = { moveOpen = false },
+            onPick = { target ->
+                haptics.toggle()
+                moveOpen = false
+                onMove(selected, target)
+                exitSelection()
+            },
+        )
+    }
+
+}
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    collapsible: Boolean,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = Space.s, bottom = Space.xxs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.weight(1f))
+        if (collapsible) {
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .clickable(onClick = onToggle),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (collapsed) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    contentDescription = if (collapsed) "展开置顶" else "折叠置顶",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoveDialog(
+    categories: List<FolderEntry>,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(Radius.sheet),
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        title = { Text("移动到", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                categories.forEach { entry ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .springPressable(onClick = { onPick(entry.path) })
+                            .padding(vertical = Space.s),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AccentDot(size = 10)
+                        Spacer(Modifier.width(Space.s))
+                        Text(entry.name, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = "${entry.noteCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextPill("取消", onDismiss)
+        },
+    )
 }
 
 @Composable
@@ -260,87 +565,43 @@ private fun FloatingNewButton(onCreate: () -> Unit) {
 }
 
 @Composable
-private fun SelectionHeader(
-    count: Int,
-    allSelected: Boolean,
-    onCancel: () -> Unit,
-    onSelectAll: () -> Unit,
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
+private fun LockedState(modifier: Modifier, onUnlock: () -> Unit) {
+    Column(
+        modifier.padding(top = 160.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(72.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+            contentAlignment = Alignment.Center,
         ) {
-            TextPill("取消", onCancel)
-            Spacer(Modifier.weight(1f))
-            TextPill(if (allSelected) "取消全选" else "全选", onSelectAll)
-        }
-        Text(
-            text = "选择项目",
-            style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(start = Space.l, top = Space.s),
-        )
-        Row(
-            Modifier.padding(start = Space.l + 4.dp, top = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AccentDot(size = 6)
-            Spacer(Modifier.width(Space.xs))
-            Text(
-                text = "已选 $count 项",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Icon(
+                Icons.Filled.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(26.dp),
             )
         }
         Spacer(Modifier.height(Space.m))
-    }
-}
-
-@Composable
-private fun SelectionActionBar(onPin: () -> Unit, onDelete: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = Space.xl, vertical = Space.s),
-        contentAlignment = Alignment.Center,
-    ) {
         Surface(
-            shape = CircleShape,
+            onClick = onUnlock,
+            shape = RoundedCornerShape(Radius.card),
             color = MaterialTheme.colorScheme.surface,
-            shadowElevation = Elev.floating,
         ) {
-            Row(
-                Modifier.padding(horizontal = Space.xl, vertical = Space.s),
-                horizontalArrangement = Arrangement.spacedBy(40.dp),
-            ) {
-                ActionItem(Icons.Filled.Star, "置顶", onPin)
-                ActionItem(Icons.Filled.Delete, "删除", onDelete)
-            }
+            Text(
+                text = "输入密码查看",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
+            )
         }
-    }
-}
-
-@Composable
-private fun ActionItem(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        CircleButton(onClick = onClick, subtle = true) {
-            Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
-        }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = Space.xxs),
-        )
     }
 }
 
 @Composable
 private fun EmptyState(modifier: Modifier, text: String) {
     Column(
-        modifier,
-        verticalArrangement = Arrangement.Center,
+        modifier.padding(top = 160.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -356,12 +617,6 @@ private fun EmptyState(modifier: Modifier, text: String) {
             text = text,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "右下角新建一篇",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.padding(top = Space.xxs),
         )
     }
 }

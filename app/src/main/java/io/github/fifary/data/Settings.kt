@@ -75,6 +75,12 @@ object SettingsStore {
     var sortMode by mutableStateOf(SortMode.UPDATED)
         private set
 
+    // 私密密码只存盐和校验值；密钥由密码当场派生，不落盘
+    var secretSalt by mutableStateOf<String?>(null)
+        private set
+    var secretVerifier by mutableStateOf<String?>(null)
+        private set
+
     fun load(context: Context) {
         if (prefs != null) return
         val p = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -86,6 +92,14 @@ object SettingsStore {
             .getOrDefault(ViewMode.LIST)
         sortMode = runCatching { SortMode.valueOf(p.getString("sortMode", null) ?: "") }
             .getOrDefault(SortMode.UPDATED)
+        secretSalt = p.getString("secretSalt", null)
+        secretVerifier = p.getString("secretVerifier", null)
+    }
+
+    fun updateSecret(salt: String, verifier: String) {
+        secretSalt = salt
+        secretVerifier = verifier
+        prefs?.edit()?.putString("secretSalt", salt)?.putString("secretVerifier", verifier)?.apply()
     }
 
     fun updateThemeMode(mode: ThemeMode) {

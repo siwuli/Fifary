@@ -110,7 +110,7 @@ private val AppShapes = Shapes(
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(20.dp),
     large = RoundedCornerShape(24.dp),
-    extraLarge = CircleShape,
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 @Composable

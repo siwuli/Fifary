@@ -20,10 +20,10 @@ object Radius {
 }
 
 object Size {
-    val touch = 40.dp
+    val touch = 44.dp
     // 分类胶囊做扁：参考图的胶囊是"扁长"的，不要圆滚滚
     val chipHeight = 30.dp
-    val categoryButton = 32.dp
+    val categoryButton = 34.dp
     val gridCardMin = 168.dp
     val check = 20.dp
 }

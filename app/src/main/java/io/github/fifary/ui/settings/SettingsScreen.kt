@@ -32,11 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.Palette
+import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.Palettes
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.data.ThemeMode
 import io.github.fifary.ui.components.Capsule
 import io.github.fifary.ui.components.CircleButton
+import io.github.fifary.ui.components.InputDialog
 import io.github.fifary.ui.components.rememberHaptics
 import io.github.fifary.ui.theme.Elev
 import io.github.fifary.ui.theme.Radius
@@ -56,6 +58,13 @@ fun SettingsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var syncing by remember { mutableStateOf(false) }
     var doneCount by remember { mutableStateOf<Int?>(null) }
+
+    // 私密密码：设置 / 修改（改密码要把全部私密笔记重新加密）
+    var askSet by remember { mutableStateOf(false) }
+    var askOld by remember { mutableStateOf(false) }
+    var askNew by remember { mutableStateOf(false) }
+    var oldPassword by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { inner ->
         Column(
@@ -169,7 +178,114 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+
+            SectionLabel("私密")
+            Surface(
+                shape = RoundedCornerShape(Radius.card),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(Space.m), verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                    Text(
+                        text = if (PrivateVault.enabled) {
+                            "私密笔记用密码派生的 AES-GCM 密钥加密保存。改密码会把全部私密笔记用新密钥重新加密，" +
+                                "云备份上传的仍是密文，密码本身不出本机。"
+                        } else {
+                            "还没有私密密码。设一个之后，私密笔记会加密保存。"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (message != null) {
+                        Text(
+                            text = message!!,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                        Capsule(
+                            selected = true,
+                            onClick = {
+                                message = null
+                                if (PrivateVault.enabled) askOld = true else askSet = true
+                            },
+                        ) {
+                            Text(
+                                text = if (PrivateVault.enabled) "修改密码" else "设置密码",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        if (PrivateVault.enabled) {
+                            Capsule(
+                                selected = false,
+                                onClick = {
+                                    PrivateVault.lock()
+                                    message = "已锁定，下次看私密笔记要重新输密码"
+                                },
+                            ) {
+                                Text("立即锁定", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    if (askSet) {
+        InputDialog(
+            title = "设置私密密码",
+            placeholder = "至少 4 位",
+            confirmText = "保存",
+            masked = true,
+            note = "密码只存在本机，忘了就解不开。",
+            onDismiss = { askSet = false },
+            onConfirm = { value ->
+                if (PrivateVault.setPassword(value)) {
+                    askSet = false
+                    message = "私密密码已设置"
+                }
+            },
+        )
+    }
+
+    if (askOld) {
+        InputDialog(
+            title = "输入当前密码",
+            placeholder = "密码",
+            confirmText = "下一步",
+            masked = true,
+            onDismiss = { askOld = false },
+            onConfirm = { value ->
+                if (PrivateVault.unlock(value)) {
+                    oldPassword = value
+                    askOld = false
+                    askNew = true
+                } else {
+                    message = "密码不对"
+                }
+            },
+        )
+    }
+
+    if (askNew) {
+        InputDialog(
+            title = "设置新密码",
+            placeholder = "至少 4 位",
+            confirmText = "保存",
+            masked = true,
+            note = "全部私密笔记会用新密码重新加密。",
+            onDismiss = { askNew = false },
+            onConfirm = { value ->
+                askNew = false
+                message = if (PrivateVault.changePassword(oldPassword, value)) {
+                    "已用新密码重新加密全部私密笔记"
+                } else {
+                    "修改失败，密码没有变"
+                }
+            },
+        )
     }
 }
 
