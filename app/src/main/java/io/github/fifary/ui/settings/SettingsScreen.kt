@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -163,6 +164,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = Space.xxs),
                 )
             }
+
+            // 装的是哪一版，看这一行就够了
+            Text(
+                text = version(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = Space.s, start = Space.xxs),
+            )
         }
     }
 
@@ -335,5 +344,16 @@ private fun ChevronLeft() {
             stroke,
             cap = androidx.compose.ui.graphics.StrokeCap.Round,
         )
+    }
+}
+
+@Composable
+private fun version(): String {
+    val context = LocalContext.current
+    return remember {
+        runCatching {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            "Fifary ${info.versionName} (${info.longVersionCode})"
+        }.getOrDefault("Fifary")
     }
 }
