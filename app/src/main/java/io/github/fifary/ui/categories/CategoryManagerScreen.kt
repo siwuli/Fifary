@@ -49,11 +49,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.fifary.data.FolderEntry
 import io.github.fifary.ui.components.BarAction
 import io.github.fifary.ui.components.BouncingBox
@@ -71,7 +69,7 @@ import io.github.fifary.ui.theme.Radius
 import io.github.fifary.ui.theme.Space
 
 private val ToolbarHeight = 52.dp
-private val TitleTop = 54.dp
+private val TitleTop = 58.dp
 private val TitleShift = 45.dp
 
 @Composable
@@ -443,10 +441,7 @@ private fun CategoryHeader(
             if (!editing) {
                 Text(
                     text = "分组",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
+                    style = MaterialTheme.typography.headlineLarge,
                     modifier = Modifier
                         .padding(start = Space.l)
                         .graphicsLayer {

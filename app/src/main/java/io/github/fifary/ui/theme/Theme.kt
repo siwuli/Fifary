@@ -56,52 +56,62 @@ private fun darkScheme(p: Palette): ColorScheme = darkColorScheme(
     outlineVariant = lerp(p.darkBg, Color.White, 0.16f),
 )
 
-// 正文 16sp / 行高 1.7（§8.6）
+// 字号全部取参考 App 的 COUI 字阶（couiText*）：页面标题 22 / 弹层 20 / 小标题 18 / 强调 16 / 正文 14 / 说明 12
 private val AppTypography = Typography(
     headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 38.sp,
-        lineHeight = 46.sp,
-        letterSpacing = (-0.3).sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 22.sp,
+        lineHeight = 26.sp,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
-        lineHeight = 34.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 20.sp,
+        lineHeight = 22.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 21.sp,
-        lineHeight = 28.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 18.sp,
+        lineHeight = 21.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 19.sp,
-        lineHeight = 26.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 16.sp,
+        lineHeight = 18.sp,
+    ),
+    titleSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+        lineHeight = 15.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontSize = 16.sp,
-        lineHeight = 27.sp,
+        lineHeight = 18.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontSize = 15.sp,
-        lineHeight = 25.sp,
+        fontSize = 14.sp,
+        lineHeight = 15.sp,
+    ),
+    bodySmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontSize = 12.sp,
+        lineHeight = 12.sp,
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontSize = 14.sp,
-        lineHeight = 19.sp,
+        lineHeight = 15.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontSize = 12.sp,
-        lineHeight = 16.sp,
+        lineHeight = 12.sp,
     ),
 )
 

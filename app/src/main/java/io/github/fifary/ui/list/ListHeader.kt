@@ -53,11 +53,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.fifary.data.FolderEntry
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.SortMode
@@ -80,13 +78,13 @@ import io.github.fifary.ui.theme.Space
 //  · 分类那一行是 AppBar 里不带 scrollFlags 的子 View，所以它常驻，不跟着滚走
 // 收起范围 = 110 - 52 = 58dip；雾化带只铺在常驻区，静止时完全透明。
 private val ToolbarHeight = 52.dp
-private val TitleAreaHeight = 126.dp
+private val TitleAreaHeight = 118.dp
 private val ChipsHeight = 48.dp
-private val TitleTop = 54.dp
-private val TitleLine = 46.sp
-private val TitleShift = 46.dp
-private val TitleScale = 0.75f
-private val SubtitleTop = 100.dp
+private val TitleTop = 58.dp
+private val TitleShift = 42.dp
+// 收起后 22sp × 0.73 ≈ 参考工具条标题的 16dp
+private val TitleScale = 0.73f
+private val SubtitleTop = 88.dp
 
 @Composable
 fun ListHeader(
@@ -154,11 +152,7 @@ fun ListHeader(
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 32.sp,
-                            lineHeight = TitleLine,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
+                        style = MaterialTheme.typography.headlineLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier

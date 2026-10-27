@@ -159,7 +159,7 @@ fun NoteCard(
                 }
                 Text(
                     text = timeLabel(note.updatedAt),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(top = Space.xs),
                 )

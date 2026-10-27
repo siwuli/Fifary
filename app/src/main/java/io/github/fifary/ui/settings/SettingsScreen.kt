@@ -255,7 +255,7 @@ private fun SettingRow(title: String, value: String?, onClick: () -> Unit) {
         if (value != null) {
             Text(
                 text = value,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

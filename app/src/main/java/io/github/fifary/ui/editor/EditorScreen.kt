@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -369,7 +370,7 @@ fun EditorScreen(
                                     .padding(start = 20.dp, end = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("格式", style = MaterialTheme.typography.titleMedium)
+                                Text("格式", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.weight(1f))
                                 Box(
                                     Modifier
@@ -454,7 +455,7 @@ fun EditorScreen(
                                     Text("关闭", style = MaterialTheme.typography.titleSmall)
                                 }
                                 Spacer(Modifier.weight(1f))
-                                Text("添加", style = MaterialTheme.typography.titleMedium)
+                                Text("添加", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.weight(1f))
                                 Spacer(Modifier.size(64.dp, 1.dp))
                             }
@@ -514,9 +515,8 @@ private fun ExtraRow(items: List<Pair<String, ImageVector>>, onClick: (String) -
             ) {
                 Box(
                     Modifier
-                        .fillMaxWidth()
-                        .height(68.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .size(60.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { onClick(label) },
                     contentAlignment = Alignment.Center,
@@ -525,12 +525,16 @@ private fun ExtraRow(items: List<Pair<String, ImageVector>>, onClick: (String) -
                 }
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp),
+                    minLines = 2,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = Space.xxs),
                 )
             }
         }
+        // 参考是等宽的 70dp 格子：不满一行时补空位，不让剩下的格子被拉宽
+        repeat(4 - items.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 
@@ -549,7 +553,7 @@ private fun PanelRow(content: @Composable RowScope.() -> Unit) {
 }
 
 @Composable
-private fun BubbleIcon(icon: ImageVector, label: String, box: Dp = 48.dp, onClick: () -> Unit) {
+private fun BubbleIcon(icon: ImageVector, label: String, box: Dp = 40.dp, onClick: () -> Unit) {
     Box(
         Modifier
             .size(box)
