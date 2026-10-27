@@ -224,7 +224,7 @@ private fun CategoryRow(
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = Space.l),
-        horizontalArrangement = Arrangement.spacedBy(Space.xs),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 左边这个方形按钮 = 进入分组管理页（不是切视图）
@@ -242,8 +242,8 @@ private fun CategoryRow(
         }
         categories.forEach { entry ->
             Capsule(selected = folder == entry.path, onClick = { onSelectCategory(entry.path) }) {
-                AccentDot(size = 12)
-                Spacer(Modifier.width(Space.xs))
+                AccentDot(size = 10)
+                Spacer(Modifier.width(Space.xxs))
                 Text(entry.name, style = MaterialTheme.typography.labelMedium)
             }
         }

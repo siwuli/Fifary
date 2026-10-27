@@ -70,7 +70,7 @@ fun Capsule(
         modifier = modifier.height(Size.chipHeight),
     ) {
         Row(
-            Modifier.padding(horizontal = 20.dp),
+            Modifier.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
@@ -85,7 +85,7 @@ fun TextPill(text: String, onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.height(Size.chipHeight),
     ) {
-        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, style = MaterialTheme.typography.labelMedium)
         }
     }
