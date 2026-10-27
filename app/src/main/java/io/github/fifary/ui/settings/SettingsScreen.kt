@@ -1,11 +1,15 @@
 package io.github.fifary.ui.settings
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,8 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -26,25 +32,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.Palette
-import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.Palettes
+import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.data.ThemeMode
-import io.github.fifary.ui.components.Capsule
 import io.github.fifary.ui.components.CircleButton
 import io.github.fifary.ui.components.InputDialog
-import io.github.fifary.ui.components.rememberHaptics
-import io.github.fifary.ui.theme.Elev
+import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Radius
+import io.github.fifary.ui.theme.Size
 import io.github.fifary.ui.theme.Space
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 private val MODE_LABELS = listOf(
     ThemeMode.SYSTEM to "跟随系统",
@@ -54,12 +56,7 @@ private val MODE_LABELS = listOf(
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
-    val haptics = rememberHaptics()
-    val scope = rememberCoroutineScope()
-    var syncing by remember { mutableStateOf(false) }
-    var doneCount by remember { mutableStateOf<Int?>(null) }
-
-    // 私密密码：设置 / 修改（改密码要把全部私密笔记重新加密）
+    // 私密密码：设置 / 修改（改密码只重新包一次数据密钥，不动笔记）
     var askSet by remember { mutableStateOf(false) }
     var askOld by remember { mutableStateOf(false) }
     var askNew by remember { mutableStateOf(false) }
@@ -81,19 +78,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Modifier.fillMaxWidth().padding(top = Space.xs, bottom = Space.s),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CircleButton(onClick = onBack) {
-                    ChevronLeft()
-                }
+                CircleButton(onClick = onBack) { ChevronLeft() }
                 Spacer(Modifier.size(Space.s))
                 Text("设置", style = MaterialTheme.typography.headlineLarge)
             }
 
             SectionLabel("外观")
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(Radius.card),
-                color = MaterialTheme.colorScheme.surface,
-            ) {
+            Card {
                 Column(Modifier.padding(Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
                     Text(
                         text = "主题",
@@ -105,10 +96,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                             ThemePill(
                                 text = label,
                                 selected = SettingsStore.themeMode == mode,
-                                onClick = {
-                                    haptics.toggle()
-                                    SettingsStore.updateThemeMode(mode)
-                                },
+                                onClick = { SettingsStore.updateThemeMode(mode) },
                             )
                         }
                     }
@@ -119,116 +107,61 @@ fun SettingsScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                    // 六个色块平分一行，窄屏也不会有够不到的第七个
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Space.xs),
+                    ) {
                         Palettes.forEach { palette ->
                             PaletteSwatch(
                                 palette = palette,
                                 selected = SettingsStore.palette.id == palette.id,
-                                onClick = {
-                                    haptics.toggle()
-                                    SettingsStore.updatePalette(palette)
-                                },
+                                onClick = { SettingsStore.updatePalette(palette) },
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
                 }
             }
 
-            SectionLabel("同步")
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(Radius.card),
-                color = MaterialTheme.colorScheme.surface,
-            ) {
-                Column(Modifier.padding(Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
-                    Text(
-                        text = "尚未配置 WebDAV。没配置时 App 一样能用，只做本地笔记。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SectionLabel("私密笔记")
+            Card {
+                SettingRow(
+                    title = "私密密码",
+                    value = if (PrivateVault.enabled) "已设置" else "未设置",
+                    onClick = {
+                        message = null
+                        if (PrivateVault.enabled) askOld = true else askSet = true
+                    },
+                )
+                if (PrivateVault.unlocked) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(start = Space.l),
                     )
-                    if (syncing) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                    }
-                    doneCount?.let { count ->
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(Radius.chip),
-                        ) {
-                            Text(
-                                text = "已完成：上传 $count 项",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(horizontal = Space.m, vertical = Space.s),
-                            )
-                        }
-                    }
-                    Button(
+                    SettingRow(
+                        title = "立即锁定",
+                        value = null,
                         onClick = {
-                            scope.launch {
-                                syncing = true
-                                doneCount = null
-                                delay(900)
-                                syncing = false
-                                doneCount = 12
-                                haptics.syncDone()
-                            }
+                            PrivateVault.lock()
+                            message = "已锁定，看私密笔记要重新输密码"
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(if (syncing) "同步中…" else "立即同步（占位）")
-                    }
+                    )
                 }
             }
-
-            SectionLabel("私密")
-            Surface(
-                shape = RoundedCornerShape(Radius.card),
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(Space.m), verticalArrangement = Arrangement.spacedBy(Space.s)) {
-                    Text(
-                        text = if (PrivateVault.enabled) {
-                            "私密笔记用密码派生的 AES-GCM 密钥加密保存，进入私密笔记只要输一次。" +
-                                "改密码会把全部私密笔记用新密钥重新加密；云备份上传的仍是密文，密码不出本机。"
-                        } else {
-                            "还没有私密密码。设一个之后，私密笔记会加密保存。"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (message != null) {
-                        Text(
-                            text = message!!,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                        Capsule(
-                            selected = true,
-                            onClick = {
-                                message = null
-                                if (PrivateVault.enabled) askOld = true else askSet = true
-                            },
-                        ) {
-                            Text(
-                                text = if (PrivateVault.enabled) "修改密码" else "设置密码",
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        if (PrivateVault.enabled) {
-                            Capsule(
-                                selected = false,
-                                onClick = {
-                                    PrivateVault.lock()
-                                    message = "已锁定，下次看私密笔记要重新输密码"
-                                },
-                            ) {
-                                Text("立即锁定", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
-                }
+            Text(
+                text = "密码只在本机验证；私密笔记用独立数据密钥加密，改密码只换外面那层包裹，不会重写笔记。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(horizontal = Space.xxs),
+            )
+            message?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = Space.xxs),
+                )
             }
         }
     }
@@ -275,16 +208,53 @@ fun SettingsScreen(onBack: () -> Unit) {
             placeholder = "至少 4 位",
             confirmText = "保存",
             masked = true,
-            note = "全部私密笔记会用新密码重新加密。",
             onDismiss = { askNew = false },
             onConfirm = { value ->
                 askNew = false
                 message = if (PrivateVault.changePassword(oldPassword, value)) {
-                    "已用新密码重新加密全部私密笔记"
+                    "密码已修改，笔记不用重新加密"
                 } else {
                     "修改失败，密码没有变"
                 }
+                oldPassword = ""
             },
+        )
+    }
+}
+
+@Composable
+private fun Card(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(Radius.card),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun SettingRow(title: String, value: String?, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .springPressable(onClick = onClick)
+            .padding(horizontal = Space.l, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        if (value != null) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(18.dp),
         )
     }
 }
@@ -307,7 +277,7 @@ private fun ThemePill(text: String, selected: Boolean, onClick: () -> Unit) {
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.height(io.github.fifary.ui.theme.Size.chipHeight),
+        modifier = Modifier.height(Size.chipHeight),
     ) {
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, style = MaterialTheme.typography.labelMedium)
@@ -316,22 +286,27 @@ private fun ThemePill(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PaletteSwatch(palette: Palette, selected: Boolean, onClick: () -> Unit) {
+private fun PaletteSwatch(
+    palette: Palette,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
         color = palette.lightAccent,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             width = if (selected) 3.dp else 1.dp,
             color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
         ),
-        modifier = Modifier.size(44.dp),
+        modifier = modifier.aspectRatio(1f),
     ) {
         Box(Modifier.background(palette.lightAccent), contentAlignment = Alignment.Center) {
             if (selected) {
                 Box(
                     Modifier
-                        .size(10.dp)
+                        .size(8.dp)
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
             }
@@ -342,7 +317,7 @@ private fun PaletteSwatch(palette: Palette, selected: Boolean, onClick: () -> Un
 @Composable
 private fun ChevronLeft() {
     val tint = MaterialTheme.colorScheme.onSurface
-    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+    Canvas(Modifier.size(18.dp)) {
         val w = size.width
         val h = size.height
         val stroke = w * 0.13f

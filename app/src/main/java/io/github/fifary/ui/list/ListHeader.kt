@@ -1,7 +1,6 @@
 package io.github.fifary.ui.list
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -36,11 +36,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
@@ -48,27 +50,41 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size as GeomSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.fifary.data.FolderEntry
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.SortMode
 import io.github.fifary.data.ViewMode
-import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.Capsule
 import io.github.fifary.ui.components.CircleIconButton
+import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.TextPill
-import io.github.fifary.ui.components.rememberHaptics
 import io.github.fifary.ui.theme.Elev
 import io.github.fifary.ui.theme.Radius
 import io.github.fifary.ui.theme.Size
 import io.github.fifary.ui.theme.Space
 
-// 悬浮顶栏：整块浮在内容上面，内容从它下面滑过去（被渐变雾化带盖住）。
-// collapse 只在 graphicsLayer 里读，滚动过程中不发生重组。
+// 悬浮顶栏，尺寸照参考 App 的 COUI AppBar：
+//  · coui_appbar_title_toolbar_height   52dip，常驻工具条
+//  · coui_appbar_title_expanded_margin_top 54dip，大标题的起始位置
+//  · 大标题 coui_appbar_title_expanded_text_size 32dip → 收起后 coui_appbar_title_collapsed_text_size 24dip
+//  · 副标题 coui_appbar_subtitle_text_size 14dip，收起后仍然留在标题下面
+// 所以大标题是"缩小 + 上移落进工具条"，不是淡出一个再淡入另一个；
+// 分类胶囊整排滑进工具条底下（裁在胶囊那一格里）。
+// 雾化带只在内容滑到工具条下面时才出现，静止时完全透明，不遮内容。
+private val ToolbarHeight = 56.dp
+// 收起后要同时装下小标题和篇数，所以常驻条比单个标题行高一点
+private val ToolbarTop = 16.dp
+private val TitleTop = 54.dp
+private val TitleShift = 53.dp
+private val SubtitleShift = 71.dp
+
 @Composable
 fun ListHeader(
     title: String,
@@ -94,144 +110,177 @@ fun ListHeader(
     onSelectSort: (SortMode) -> Unit,
     onOpenSettings: () -> Unit,
     onEnterEdit: () -> Unit,
+    onOpenCategoryPicker: () -> Unit,
+    onCompactChange: (Int) -> Unit,
     onHeightChange: (Int) -> Unit,
 ) {
-    val haptics = rememberHaptics()
     var menuOpen by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
+    var compactPx by remember { mutableFloatStateOf(0f) }
+    var chipPx by remember { mutableFloatStateOf(0f) }
 
-    // 雾化带：顶部接近实色，越往下越透，被盖住的内容隐约透出来但不抢戏
-    val band = Brush.verticalGradient(
-        0f to colors.background.copy(alpha = 0.88f),
-        0.55f to colors.background.copy(alpha = 0.94f),
-        0.78f to colors.background.copy(alpha = 0.86f),
-        1f to colors.background.copy(alpha = 0.35f),
-    )
+    val band = remember(colors.background) {
+        Brush.verticalGradient(
+            0f to colors.background,
+            0.7f to colors.background.copy(alpha = 0.92f),
+            1f to colors.background.copy(alpha = 0f),
+        )
+    }
 
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
-            .background(band)
-            .statusBarsPadding()
+            // 雾化只铺在常驻工具条那一条上
+            .drawBehind {
+                val c = collapse()
+                if (c > 0.01f) {
+                    drawRect(
+                        brush = band,
+                        size = GeomSize(size.width, compactPx + 16.dp.toPx()),
+                        alpha = c,
+                    )
+                }
+            }
             .onSizeChanged { onHeightChange(it.height) }
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = Space.l, end = Space.l, top = Space.xs)
-                .height(if (selectionMode) 0.dp else Size.touch),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (!selectionMode) {
-                CircleIconButton(Icons.Filled.Search, "搜索", onToggleSearch)
-                Spacer(Modifier.width(Space.s))
-                Box {
-                    CircleIconButton(Icons.Filled.MoreVert, "更多", onClick = { menuOpen = true })
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false },
-                        containerColor = colors.surface,
-                        shape = RoundedCornerShape(Radius.sheet),
-                        shadowElevation = Elev.floating,
+        Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+            Spacer(Modifier.height(TitleTop))
+            if (!selectionMode && !searchOpen) {
+                Row(
+                    Modifier
+                        .padding(start = Space.l, end = Space.l)
+                        .graphicsLayer {
+                            val c = collapse()
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            val scale = 1f - 0.42f * c
+                            scaleX = scale
+                            scaleY = scale
+                            translationY = -TitleShift.toPx() * c
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // 标题旁边的小箭头：收起后点它就换分类，不用再滚回去
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .graphicsLayer {
+                                alpha = ((collapse() - 0.3f) * 2.4f).coerceIn(0f, 1f)
+                            }
+                            .clickable(onClick = onOpenCategoryPicker),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        MenuRow("编辑") { menuOpen = false; haptics.press(); onEnterEdit() }
-                        MenuRow("设置") { menuOpen = false; onOpenSettings() }
-                        MenuRow(if (viewMode == ViewMode.LIST) "宫格模式" else "列表模式") {
-                            menuOpen = false
-                            haptics.toggle()
-                            onToggleView()
-                        }
-                        HorizontalDivider(
-                            color = colors.outlineVariant,
-                            modifier = Modifier.padding(horizontal = Space.s, vertical = Space.xxs),
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "切换分类",
+                            tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp),
                         )
-                        MenuRow("按创建时间排序", checked = sortMode == SortMode.CREATED) {
-                            menuOpen = false
-                            haptics.toggle()
-                            onSelectSort(SortMode.CREATED)
-                        }
-                        MenuRow("按修改时间排序", checked = sortMode == SortMode.UPDATED) {
-                            menuOpen = false
-                            haptics.toggle()
-                            onSelectSort(SortMode.UPDATED)
-                        }
                     }
                 }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(start = Space.l + 2.dp, top = Space.xxs)
+                        .graphicsLayer {
+                            translationY = -SubtitleShift.toPx() * collapse()
+                        },
+                )
+                Spacer(Modifier.height(Space.xs))
+                // 胶囊整排跟着手指往上走，走到副标题那儿就已经化没了
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { chipPx = it.height.toFloat() }
+                ) {
+                    CategoryRow(
+                        categories = categories,
+                        folder = folder,
+                        secretEnabled = secretEnabled,
+                        onSelectCategory = onSelectCategory,
+                        onOpenCategories = onOpenCategories,
+                        modifier = Modifier.graphicsLayer {
+                            val c = collapse()
+                            translationY = -chipPx * c
+                            alpha = (1f - c * 1.3f).coerceIn(0f, 1f)
+                        },
+                    )
+                }
+                Spacer(Modifier.height(Space.xs))
             }
         }
 
-        Box(Modifier.fillMaxWidth().padding(top = Space.xxs)) {
-            if (selectionMode) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.s),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+        Column(
+            Modifier
+                .statusBarsPadding()
+                .onSizeChanged {
+                    compactPx = it.height.toFloat()
+                    onCompactChange(it.height)
+                }
+        ) {
+            Spacer(Modifier.height(ToolbarTop))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(ToolbarHeight)
+                    .padding(horizontal = Space.l),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (selectionMode) {
                     TextPill("取消", onCancelSelection)
                     Text(
                         text = selectionText,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        textAlign = TextAlign.Center,
                     )
                     TextPill(if (allSelected) "取消全选" else "全选", onSelectAll)
-                }
-            } else {
-                Column(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = Space.l, end = Space.l, top = Space.s),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.headlineLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.graphicsLayer {
-                                // 上滑时标题缩小钻到左上角按钮行里，不消失
-                                val c = collapse()
-                                val scale = 1f - 0.42f * c
-                                scaleX = scale
-                                scaleY = scale
-                                transformOrigin = TransformOrigin(0f, 0f)
-                                translationY = -c * 38.dp.toPx()
-                            },
-                        )
-                    }
-                    Row(
-                        Modifier
-                            .padding(start = Space.l + 4.dp, top = Space.xxs)
-                            .graphicsLayer { alpha = (1f - collapse() * 2.2f).coerceIn(0f, 1f) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.onSurfaceVariant,
-                        )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                    CircleIconButton(Icons.Filled.Search, "搜索", onToggleSearch)
+                    Spacer(Modifier.width(Space.s))
+                    Box {
+                        CircleIconButton(Icons.Filled.MoreVert, "更多", onClick = { menuOpen = true })
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false },
+                            containerColor = colors.surface,
+                            shape = RoundedCornerShape(Radius.sheet),
+                            shadowElevation = Elev.floating,
+                        ) {
+                            MenuRow("编辑") { menuOpen = false; onEnterEdit() }
+                            MenuRow("设置") { menuOpen = false; onOpenSettings() }
+                            MenuRow(if (viewMode == ViewMode.LIST) "宫格模式" else "列表模式") {
+                                menuOpen = false
+                                onToggleView()
+                            }
+                            HorizontalDivider(
+                                color = colors.outlineVariant,
+                                modifier = Modifier.padding(horizontal = Space.s, vertical = Space.xxs),
+                            )
+                            MenuRow("按创建时间排序", checked = sortMode == SortMode.CREATED) {
+                                menuOpen = false
+                                onSelectSort(SortMode.CREATED)
+                            }
+                            MenuRow("按修改时间排序", checked = sortMode == SortMode.UPDATED) {
+                                menuOpen = false
+                                onSelectSort(SortMode.UPDATED)
+                            }
+                        }
                     }
                 }
             }
-        }
-
-        if (searchOpen) {
-            SearchField(query, onQueryChange, onClose = onToggleSearch)
-        }
-
-        if (!selectionMode) {
-            Spacer(Modifier.height(if (searchOpen) Space.xs else Space.s))
-            Row(Modifier.fillMaxWidth()) {
-                CategoryRow(
-                    categories = categories,
-                    folder = folder,
-                    secretEnabled = secretEnabled,
-                    onSelectCategory = onSelectCategory,
-                    onOpenCategories = onOpenCategories,
-                )
+            if (searchOpen && !selectionMode) {
+                SearchField(query, onQueryChange, onClose = onToggleSearch)
             }
-            Spacer(Modifier.height(Space.xs))
         }
     }
 }
@@ -314,11 +363,11 @@ private fun CategoryRow(
     secretEnabled: Boolean,
     onSelectCategory: (String) -> Unit,
     onOpenCategories: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = Space.l),
         horizontalArrangement = Arrangement.spacedBy(6.dp),

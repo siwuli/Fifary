@@ -44,13 +44,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -61,10 +59,11 @@ import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.SortMode
 import io.github.fifary.data.ViewMode
 import io.github.fifary.ui.components.AccentDot
-import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.BarAction
+import io.github.fifary.ui.components.BouncingBox
 import io.github.fifary.ui.components.ConfirmDialog
 import io.github.fifary.ui.components.FloatingActionBar
+import io.github.fifary.ui.components.NotebookGlyph
 import io.github.fifary.ui.components.TextPill
 import io.github.fifary.ui.components.rememberHaptics
 import io.github.fifary.ui.components.rememberSecretGate
@@ -78,6 +77,8 @@ fun NoteListScreen(
     folder: String,
     categories: List<FolderEntry>,
     notes: List<Note>,
+    totalNotes: Int,
+    trashNotes: Int,
     viewMode: ViewMode,
     sortMode: SortMode,
     onSelectCategory: (String) -> Unit,
@@ -105,16 +106,17 @@ fun NoteListScreen(
     var searchOpen by remember(folder) { mutableStateOf(false) }
     var query by remember(folder) { mutableStateOf("") }
     var pinnedCollapsed by remember(folder) { mutableStateOf(false) }
+    var compactHeight by remember { mutableStateOf(0.dp) }
     var headerHeight by remember { mutableStateOf(0.dp) }
     var askDelete by remember { mutableStateOf(false) }
     var askPurge by remember { mutableStateOf(false) }
     var askSecret by remember { mutableStateOf(false) }
     var moveOpen by remember { mutableStateOf(false) }
+    var pickerOpen by remember { mutableStateOf(false) }
 
     val selectionMode = editing
 
     fun toggle(path: String) {
-        haptics.toggle()
         editing = true
         selected = if (path in selected) selected - path else selected + path
     }
@@ -146,8 +148,10 @@ fun NoteListScreen(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     val density = LocalDensity.current
-    val collapseThreshold = with(density) { 72.dp.toPx() }
-    val collapse = remember(viewMode) {
+    // 顶栏收起的距离 = 顶栏总高 - 常驻工具条高度（大标题 + 篇数 + 胶囊那一段）
+    val spacer = (headerHeight - compactHeight).coerceAtLeast(0.dp)
+    val spacerPx = with(density) { spacer.toPx() }
+    val collapse = remember(viewMode, spacerPx) {
         derivedStateOf {
             val grid = viewMode == ViewMode.GRID
             val index = if (grid) gridState.firstVisibleItemIndex else listState.firstVisibleItemIndex
@@ -157,7 +161,7 @@ fun NoteListScreen(
                 listState.firstVisibleItemScrollOffset
             }
             // 滑过第一项之后 offset 会归零，所以用 index 兜住，避免标题又"长"回去
-            if (index > 0) 1f else (offset / collapseThreshold).coerceIn(0f, 1f)
+            if (index > 0) 1f else (offset / spacerPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
         }
     }
 
@@ -174,205 +178,214 @@ fun NoteListScreen(
         else -> "${shown.size} 篇笔记"
     }
 
-    // 底部多留一屏：内容很少也要能滑，滑动才能把标题带上去
-    val tail = with(LocalConfiguration.current) { (screenHeightDp * 0.45f).dp }
+    // 笔记很少时才多留一屏，保证短列表也能上滑收起顶栏；
+    // 正常数量就留一条到边的空隙，滑到底不会掉进一大片空白。
+    val tail = if (shown.size <= 5) {
+        with(LocalConfiguration.current) { (screenHeightDp * 0.5f).dp }
+    } else {
+        Space.xl + 88.dp
+    }
 
     Box(Modifier.fillMaxSize()) {
-        if (locked) {
-            LockedState(Modifier.fillMaxSize(), onUnlock = { gate.run { } })
-        } else if (shown.isEmpty()) {
-            EmptyState(
-                modifier = Modifier.fillMaxSize(),
-                lockedHint = privateView,
-                text = when {
-                    query.isNotBlank() -> "没有匹配的笔记"
-                    inTrash -> "最近删除是空的"
-                    else -> "这个分组还没有笔记"
-                },
-            )
-        } else if (viewMode == ViewMode.GRID) {
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = Space.l,
-                    end = Space.l,
-                    top = headerHeight + Space.s,
-                    bottom = tail,
-                ),
-                horizontalArrangement = Arrangement.spacedBy(Space.xs),
-                verticalArrangement = Arrangement.spacedBy(Space.xs),
-            ) {
-                if (hasPinned) {
-                    item(key = "h-pin", span = { GridItemSpan(maxLineSpan) }) {
-                        SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
-                            haptics.toggle()
-                            pinnedCollapsed = !pinnedCollapsed
+        BouncingBox(Modifier.fillMaxSize()) {
+            if (locked) {
+                LockedState(Modifier.fillMaxSize(), onUnlock = { gate.run { } })
+            } else if (shown.isEmpty()) {
+                EmptyState(
+                    modifier = Modifier.fillMaxSize(),
+                    lockedHint = privateView,
+                    text = when {
+                        query.isNotBlank() -> "没有匹配的笔记"
+                        inTrash -> "最近删除是空的"
+                        else -> "这个分组还没有笔记"
+                    },
+                )
+            } else if (viewMode == ViewMode.GRID) {
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = Space.l,
+                        end = Space.l,
+                        top = compactHeight,
+                        bottom = tail,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(Space.xs),
+                    verticalArrangement = Arrangement.spacedBy(Space.xs),
+                ) {
+                    item(key = "h-space", span = { GridItemSpan(maxLineSpan) }) {
+                        Spacer(Modifier.height(spacer))
+                    }
+                    if (hasPinned) {
+                        item(key = "h-pin", span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
+                                pinnedCollapsed = !pinnedCollapsed
+                            }
                         }
                     }
-                }
-                gridItemsIndexed(items = pinned, key = { _, n -> n.path }) { index, note ->
-                    NoteCard(
-                        modifier = Modifier.animateItem(),
-                        note = note,
-                        grid = true,
-                        selectionMode = selectionMode,
-                        selected = note.path in selected,
-                        index = index,
-                        animateIn = false,
-                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
-                        onLongPress = {
-                            if (selectionMode) {
-                                toggle(note.path)
-                            } else {
-                                haptics.longPress()
-                                editing = true
-                                selected = setOf(note.path)
-                            }
-                        },
-                    )
-                }
-                if (hasPinned) {
-                    item(key = "h-other", span = { GridItemSpan(maxLineSpan) }) {
-                        SectionHeader("其他", collapsible = false, collapsed = false) {}
+                    gridItemsIndexed(items = pinned, key = { _, n -> n.path }) { index, note ->
+                        NoteCard(
+                            modifier = Modifier.animateItem(),
+                            note = note,
+                            grid = true,
+                            selectionMode = selectionMode,
+                            selected = note.path in selected,
+                            index = index,
+                            animateIn = false,
+                            onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                            onLongPress = {
+                                if (selectionMode) {
+                                    toggle(note.path)
+                                } else {
+                                    haptics.longPress()
+                                    editing = true
+                                    selected = setOf(note.path)
+                                }
+                            },
+                        )
                     }
-                }
-                gridItemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
-                    NoteCard(
-                        modifier = Modifier.animateItem(),
-                        note = note,
-                        grid = true,
-                        selectionMode = selectionMode,
-                        selected = note.path in selected,
-                        index = index,
-                        animateIn = false,
-                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
-                        onLongPress = {
-                            if (selectionMode) {
-                                toggle(note.path)
-                            } else {
-                                haptics.longPress()
-                                editing = true
-                                selected = setOf(note.path)
-                            }
-                        },
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = Space.l,
-                    end = Space.l,
-                    top = headerHeight + Space.s,
-                    bottom = tail,
-                ),
-                verticalArrangement = Arrangement.spacedBy(Space.xs),
-            ) {
-                if (hasPinned) {
-                    item(key = "h-pin") {
-                        SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
-                            haptics.toggle()
-                            pinnedCollapsed = !pinnedCollapsed
+                    if (hasPinned) {
+                        item(key = "h-other", span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader("其他", collapsible = false, collapsed = false) {}
                         }
                     }
-                }
-                itemsIndexed(items = pinned, key = { _, n -> n.path }) { index, note ->
-                    NoteCard(
-                        modifier = Modifier.animateItem(),
-                        note = note,
-                        grid = false,
-                        selectionMode = selectionMode,
-                        selected = note.path in selected,
-                        index = index,
-                        animateIn = false,
-                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
-                        onLongPress = {
-                            if (selectionMode) {
-                                toggle(note.path)
-                            } else {
-                                haptics.longPress()
-                                editing = true
-                                selected = setOf(note.path)
-                            }
-                        },
-                    )
-                }
-                if (hasPinned) {
-                    item(key = "h-other") {
-                        SectionHeader("其他", collapsible = false, collapsed = false) {}
+                    gridItemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
+                        NoteCard(
+                            modifier = Modifier.animateItem(),
+                            note = note,
+                            grid = true,
+                            selectionMode = selectionMode,
+                            selected = note.path in selected,
+                            index = index,
+                            animateIn = false,
+                            onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                            onLongPress = {
+                                if (selectionMode) {
+                                    toggle(note.path)
+                                } else {
+                                    haptics.longPress()
+                                    editing = true
+                                    selected = setOf(note.path)
+                                }
+                            },
+                        )
                     }
                 }
-                itemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
-                    NoteCard(
-                        modifier = Modifier.animateItem(),
-                        note = note,
-                        grid = false,
-                        selectionMode = selectionMode,
-                        selected = note.path in selected,
-                        index = index,
-                        animateIn = false,
-                        onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
-                        onLongPress = {
-                            if (selectionMode) {
-                                toggle(note.path)
-                            } else {
-                                haptics.longPress()
-                                editing = true
-                                selected = setOf(note.path)
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = Space.l,
+                        end = Space.l,
+                        top = compactHeight,
+                        bottom = tail,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(Space.xs),
+                ) {
+                    item(key = "h-space") { Spacer(Modifier.height(spacer)) }
+                    if (hasPinned) {
+                        item(key = "h-pin") {
+                            SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
+                                pinnedCollapsed = !pinnedCollapsed
                             }
-                        },
-                    )
+                        }
+                    }
+                    itemsIndexed(items = pinned, key = { _, n -> n.path }) { index, note ->
+                        NoteCard(
+                            modifier = Modifier.animateItem(),
+                            note = note,
+                            grid = false,
+                            selectionMode = selectionMode,
+                            selected = note.path in selected,
+                            index = index,
+                            animateIn = false,
+                            onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                            onLongPress = {
+                                if (selectionMode) {
+                                    toggle(note.path)
+                                } else {
+                                    haptics.longPress()
+                                    editing = true
+                                    selected = setOf(note.path)
+                                }
+                            },
+                        )
+                    }
+                    if (hasPinned) {
+                        item(key = "h-other") {
+                            SectionHeader("其他", collapsible = false, collapsed = false) {}
+                        }
+                    }
+                    itemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
+                        NoteCard(
+                            modifier = Modifier.animateItem(),
+                            note = note,
+                            grid = false,
+                            selectionMode = selectionMode,
+                            selected = note.path in selected,
+                            index = index,
+                            animateIn = false,
+                            onOpen = { if (selectionMode) toggle(note.path) else onOpenNote(note) },
+                            onLongPress = {
+                                if (selectionMode) {
+                                    toggle(note.path)
+                                } else {
+                                    haptics.longPress()
+                                    editing = true
+                                    selected = setOf(note.path)
+                                }
+                            },
+                        )
+                    }
                 }
             }
-        }
 
-        // 悬浮顶栏：永远在最上层，内容从它下面滑过去
-        ListHeader(
-            title = title,
-            subtitle = subtitle,
-            collapse = { collapse.value },
-            selectionMode = selectionMode,
-            selectionText = if (allSelected) "已选择全部项" else "已选择 ${selected.size} 项",
-            searchOpen = searchOpen,
-            query = query,
-            onQueryChange = { query = it },
-            onToggleSearch = {
-                searchOpen = !searchOpen
-                if (!searchOpen) query = ""
-            },
-            onCancelSelection = { exitSelection() },
-            onSelectAll = {
-                haptics.toggle()
-                selected = if (allSelected) emptySet() else shown.map { it.path }.toSet()
-            },
-            allSelected = allSelected,
-            categories = categories,
-            folder = folder,
-            secretEnabled = PrivateVault.enabled,
-            onSelectCategory = onSelectCategory,
-            onOpenCategories = onOpenCategories,
-            viewMode = viewMode,
-            sortMode = sortMode,
-            onToggleView = onToggleView,
-            onSelectSort = onSelectSort,
-            onOpenSettings = onOpenSettings,
-            onEnterEdit = {
-                exitSelection()
-                editing = true
-            },
-            onHeightChange = { headerHeight = with(density) { it.toDp() } },
-        )
+            // 悬浮顶栏：跟着橡皮筋一起动，内容只在它收起之后才滑到下面
+            ListHeader(
+                title = title,
+                subtitle = subtitle,
+                collapse = { collapse.value },
+                selectionMode = selectionMode,
+                selectionText = if (allSelected) "已选择全部项" else "已选择 ${selected.size} 项",
+                searchOpen = searchOpen,
+                query = query,
+                onQueryChange = { query = it },
+                onToggleSearch = {
+                    searchOpen = !searchOpen
+                    if (!searchOpen) query = ""
+                },
+                onCancelSelection = { exitSelection() },
+                onSelectAll = {
+                    selected = if (allSelected) emptySet() else shown.map { it.path }.toSet()
+                },
+                allSelected = allSelected,
+                categories = categories,
+                folder = folder,
+                secretEnabled = PrivateVault.enabled,
+                onSelectCategory = onSelectCategory,
+                onOpenCategories = onOpenCategories,
+                viewMode = viewMode,
+                sortMode = sortMode,
+                onToggleView = onToggleView,
+                onSelectSort = onSelectSort,
+                onOpenSettings = onOpenSettings,
+                onEnterEdit = {
+                    exitSelection()
+                    editing = true
+                },
+                onOpenCategoryPicker = { pickerOpen = true },
+                onCompactChange = { compactHeight = with(density) { it.toDp() } },
+                onHeightChange = { headerHeight = with(density) { it.toDp() } },
+            )
+        }
 
         if (selectionMode) {
             FloatingActionBar(
                 actions = when {
                     inTrash -> listOf(
                         BarAction("恢复", enabled = selected.isNotEmpty(), icon = Icons.Filled.Refresh, onClick = {
-                            haptics.toggle()
                             onRestore(selected)
                             exitSelection()
                         }),
@@ -382,7 +395,6 @@ fun NoteListScreen(
                         BarAction("取消私密", enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = {
                             val key = PrivateVault.key
                             if (key != null) {
-                                haptics.toggle()
                                 onSetSecret(selected, false)
                                 exitSelection()
                             }
@@ -393,7 +405,6 @@ fun NoteListScreen(
                         BarAction("移动", enabled = selected.isNotEmpty(), icon = Icons.AutoMirrored.Filled.ExitToApp, onClick = { moveOpen = true }),
                         BarAction("设为私密", enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = { askSecret = true }),
                         BarAction("置顶", enabled = selected.isNotEmpty(), icon = Icons.Filled.Star, onClick = {
-                            haptics.toggle()
                             onPin(selected)
                             exitSelection()
                         }),
@@ -425,7 +436,6 @@ fun NoteListScreen(
             confirmText = "删除",
             onDismiss = { askDelete = false },
             onConfirm = {
-                haptics.toggle()
                 askDelete = false
                 onDelete(selected)
                 exitSelection()
@@ -440,7 +450,6 @@ fun NoteListScreen(
             confirmText = "彻底删除",
             onDismiss = { askPurge = false },
             onConfirm = {
-                haptics.toggle()
                 askPurge = false
                 onPurge(selected)
                 exitSelection()
@@ -458,11 +467,22 @@ fun NoteListScreen(
                 askSecret = false
                 val paths = selected
                 gate.run {
-                    haptics.toggle()
                     onSetSecret(paths, true)
                     exitSelection()
                 }
             },
+        )
+    }
+
+    if (pickerOpen) {
+        CategoryPicker(
+            categories = categories,
+            folder = folder,
+            totalNotes = totalNotes,
+            trashNotes = trashNotes,
+            secretEnabled = PrivateVault.enabled,
+            onDismiss = { pickerOpen = false },
+            onPick = { pickerOpen = false; onSelectCategory(it) },
         )
     }
 
@@ -471,7 +491,6 @@ fun NoteListScreen(
             categories = categories,
             onDismiss = { moveOpen = false },
             onPick = { target ->
-                haptics.toggle()
                 moveOpen = false
                 onMove(selected, target)
                 exitSelection()
@@ -512,6 +531,69 @@ private fun SectionHeader(
             }
         }
     }
+}
+
+// 收起顶栏后点标题旁的小箭头就弹这个：不滚回顶部也能换分类
+@Composable
+private fun CategoryPicker(
+    categories: List<FolderEntry>,
+    folder: String,
+    totalNotes: Int,
+    trashNotes: Int,
+    secretEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    val rows = buildList {
+        add(Triple("", "全部笔记", totalNotes))
+        if (secretEnabled) add(Triple(NotesStore.PRIVATE, "私密笔记", null))
+        categories.forEach { add(Triple(it.path, it.name, it.noteCount)) }
+        add(Triple(NotesStore.TRASH, "最近删除", trashNotes))
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(Radius.sheet),
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        title = { Text("切换分类", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                rows.forEach { (path, name, count) ->
+                    val current = path == folder
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .springPressable(onClick = { onPick(path) })
+                            .padding(vertical = Space.s),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (count != null) {
+                            Text(
+                                text = "$count",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                        if (current) {
+                            Spacer(Modifier.width(Space.xs))
+                            Text(
+                                text = "当前",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextPill("取消", onDismiss) },
+    )
 }
 
 @Composable
@@ -557,9 +639,8 @@ private fun MoveDialog(
 
 @Composable
 private fun FloatingNewButton(onCreate: () -> Unit) {
-    val haptics = rememberHaptics()
     Surface(
-        onClick = { haptics.press(); onCreate() },
+        onClick = onCreate,
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,

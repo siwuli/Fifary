@@ -1,7 +1,7 @@
 package io.github.fifary.data
 
-// 私密笔记：密码只在本机验证，AES 密钥只留在内存里，加锁即丢。
-// 改密码 = 用旧密码解出全部明文，再用新密码重新加密（存储层是密文，必须重写）。
+// 私密笔记：密码只在本机用来越过第一层，解出来的数据密钥只留在内存里，加锁即丢。
+// 改密码 = 用新密码把同一把数据密钥重新包一次，笔记本身不动，所以是瞬间的。
 object PrivateVault {
 
     var key: ByteArray? = null
@@ -10,25 +10,25 @@ object PrivateVault {
     // 解密结果缓存：列表每帧都会取预览，不能每帧跑一次 AES
     private val cache = HashMap<String, Pair<Long, String>>()
 
-    val enabled: Boolean get() = SettingsStore.secretVerifier != null
+    val enabled: Boolean get() = SettingsStore.secretWrapped != null
     val unlocked: Boolean get() = key != null
 
     fun setPassword(password: String): Boolean {
         if (password.length < 4) return false
+        val dataKey = Secret.newDataKey()
         val salt = Secret.newSalt()
-        val (fresh, verifier) = Secret.derive(password, salt)
-        SettingsStore.updateSecret(salt, verifier)
-        key = fresh
+        SettingsStore.updateSecret(salt, Secret.wrap(Secret.deriveKek(password, salt), dataKey))
+        key = dataKey
         cache.clear()
         return true
     }
 
     fun unlock(password: String): Boolean {
         val salt = SettingsStore.secretSalt ?: return false
-        val verifier = SettingsStore.secretVerifier ?: return false
-        key = Secret.unlock(password, salt, verifier)
+        val wrapped = SettingsStore.secretWrapped ?: return false
+        key = Secret.unwrap(Secret.deriveKek(password, salt), wrapped) ?: return false
         cache.clear()
-        return key != null
+        return true
     }
 
     fun lock() {
@@ -36,21 +36,12 @@ object PrivateVault {
         cache.clear()
     }
 
-    // 改密码：先把全部密文解成明文，再统一按新密钥重新加密；解不开就整个放弃，不写半截
     fun changePassword(old: String, fresh: String): Boolean {
+        if (fresh.length < 4) return false
         if (!unlock(old)) return false
-        val plains = LinkedHashMap<String, String>()
-        for (note in NotesStore.all) {
-            if (!note.secret) continue
-            plains[note.path] = Secret.decrypt(key!!, note.body) ?: return false
-        }
-        if (!setPassword(fresh)) return false
-        val newKey = key!!
-        NotesStore.rewrite { note ->
-            val plain = plains[note.path]
-            if (note.secret && plain != null) note.copy(body = Secret.encrypt(newKey, plain)) else note
-        }
-        cache.clear()
+        val dataKey = key ?: return false
+        val salt = Secret.newSalt()
+        SettingsStore.updateSecret(salt, Secret.wrap(Secret.deriveKek(fresh, salt), dataKey))
         return true
     }
 

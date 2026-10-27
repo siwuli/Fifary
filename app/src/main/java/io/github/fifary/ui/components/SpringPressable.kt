@@ -54,7 +54,6 @@ fun Modifier.springPressable(
                     }
                 },
                 onTap = {
-                    haptics.press()
                     currentClick()
                 },
             )

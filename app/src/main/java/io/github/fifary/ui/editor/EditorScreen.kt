@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.Note
-import io.github.fifary.ui.components.rememberHaptics
 import io.github.fifary.ui.theme.Motion
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -43,7 +42,6 @@ fun EditorScreen(
     onBack: () -> Unit,
     onBodyChange: (String) -> Unit,
 ) {
-    val haptics = rememberHaptics()
     var text by remember(note.path) { mutableStateOf(note.body) }
     var savedChars by remember(note.path) { mutableStateOf(note.body.length) }
 
@@ -55,7 +53,6 @@ fun EditorScreen(
             .collect { body ->
                 onBodyChange(body)
                 savedChars = body.length
-                haptics.save()
             }
     }
 
