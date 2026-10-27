@@ -24,6 +24,11 @@
   ul, ol { margin: 6px 0; padding-left: 24px; }
   li { margin: 2px 0; }
   a { color: #2f6bff; }
+  .player { display: inline-flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 8px 12px; background: #f4f4f6; border-radius: 14px; vertical-align: middle; -webkit-user-select: none; user-select: none; }
+  .player .pp { flex: none; width: 32px; height: 32px; line-height: 32px; text-align: center; border-radius: 50%; background: #2f6bff; color: #fff; font-size: 13px; }
+  .player .bar { flex: 1; height: 4px; border-radius: 2px; background: #dcdce2; overflow: hidden; }
+  .player .fill { display: block; height: 100%; width: 0; background: #2f6bff; }
+  .player .t { flex: none; font-size: 12px; color: #666; font-variant-numeric: tabular-nums; }
   mark { background: #ffe9a8; }
   ul.todo { list-style: none; padding-left: 0; }
   ul.todo > li { display: flex; gap: 8px; align-items: flex-start; }
@@ -45,6 +50,7 @@ function inline(s) {
   s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   s = s
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (m, alt, src) { return '<img src="' + src + '" alt="' + alt + '">'; })
+    .replace(/\[([^\]]+)\]\(([^)\s]+\.(?:m4a|mp3|aac|wav|ogg))\)/gi, function (m, t, src) { return playerHtml(src, t); })
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (m, t, href) { return '<a href="' + href + '">' + t + '</a>'; })
     .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
     .replace(/~~([^~\n]+)~~/g, '<s>$1</s>')
@@ -147,7 +153,9 @@ function ser(node) {
     else if (tag === 'A') s += '[' + ser(n) + '](' + n.getAttribute('href') + ')';
     else if (tag === 'IMG') s += '![](' + n.getAttribute('src') + ')';
     else if (tag === 'BR') s += '\n';
-    else if (tag === 'SPAN' && n.getAttribute('style')) {
+    else if (tag === 'SPAN' && n.className.indexOf('player') >= 0) {
+      s += '[' + n.getAttribute('data-label') + '](' + n.getAttribute('data-src') + ')';
+    } else if (tag === 'SPAN' && n.getAttribute('style')) {
       s += '<span style="' + n.getAttribute('style') + '">' + ser(n) + '</span>';
     } else s += ser(n);
   }
@@ -155,6 +163,48 @@ function ser(node) {
 }
 
 function clean(x) { return x.replace(/\u00a0/g, ' ').trim(); }
+
+function clock(s) {
+  if (!isFinite(s)) s = 0;
+  var m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return m + ':' + (r < 10 ? '0' : '') + r;
+}
+
+// 录音在正文里就是播放器：播放/暂停 + 进度条 + 时长，点进度条能拖
+function playerHtml(src, label) {
+  return '<span class="player" contenteditable="false" data-src="' + src + '" data-label="' + label + '">' +
+    '<span class="pp">▶</span><span class="bar"><span class="fill"></span></span>' +
+    '<span class="t">' + label + '</span></span>';
+}
+
+document.addEventListener('click', function (e) {
+  var d = e.target.closest ? e.target.closest('.player') : null;
+  if (!d) return;
+  e.preventDefault();
+  if (!d.audio) {
+    var a = new Audio(d.getAttribute('data-src'));
+    d.audio = a;
+    var fill = d.querySelector('.fill'), t = d.querySelector('.t');
+    a.addEventListener('loadedmetadata', function () { t.textContent = '0:00 / ' + clock(a.duration); });
+    a.addEventListener('timeupdate', function () {
+      fill.style.width = (a.duration ? a.currentTime / a.duration * 100 : 0) + '%';
+      t.textContent = clock(a.currentTime) + ' / ' + clock(a.duration);
+    });
+    a.addEventListener('ended', function () {
+      d.querySelector('.pp').textContent = '▶';
+      fill.style.width = '0%';
+      t.textContent = d.getAttribute('data-label');
+    });
+  }
+  var au = d.audio;
+  if (e.target.closest('.bar')) {
+    var r = d.querySelector('.bar').getBoundingClientRect();
+    if (au.duration) au.currentTime = au.duration * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    return;
+  }
+  if (au.paused) { au.play(); d.querySelector('.pp').textContent = '⏸'; }
+  else { au.pause(); d.querySelector('.pp').textContent = '▶'; }
+});
 
 function listMd(el, depth, ordered) {
   var pad = '', lines = [];
@@ -503,6 +553,12 @@ function insertImage(path) {
 }
 
 function insertLink(path, label) {
+  if (/\.(m4a|mp3|aac|wav|ogg)$/i.test(path)) {
+    var box = document.createElement('div');
+    box.innerHTML = playerHtml(path, label);
+    insertAfter(box.firstChild);
+    return;
+  }
   var a = document.createElement('a');
   a.href = path;
   a.textContent = label;
