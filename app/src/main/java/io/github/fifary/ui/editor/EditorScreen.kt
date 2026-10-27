@@ -98,6 +98,9 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import android.webkit.WebView
+import org.json.JSONObject
+import org.json.JSONTokener
 import androidx.compose.ui.unit.sp
 import io.github.fifary.data.Attach
 import io.github.fifary.data.Note
@@ -137,6 +140,7 @@ fun EditorScreen(
     var body by remember(note?.path) { mutableStateOf(TextFieldValue(note?.body.orEmpty())) }
     var panel by remember { mutableStateOf(Panel.NONE) }
     var preview by remember { mutableStateOf(false) }
+    var page by remember { mutableStateOf<WebView?>(null) }
 
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var recordFile by remember { mutableStateOf<File?>(null) }
@@ -146,8 +150,20 @@ fun EditorScreen(
         onDispose { recorder?.release() }
     }
 
+    fun js(code: String) {
+        page?.evaluateJavascript(code, null)
+    }
+
     fun leave() {
-        if (note == null && title.isBlank() && body.text.isBlank()) onDiscard() else onSave(title, body.text)
+        val view = page
+        if (view == null) {
+            onDiscard()
+            return
+        }
+        view.evaluateJavascript("getMd()") { json ->
+            val md = runCatching { JSONTokener(json).nextValue() as String }.getOrDefault("")
+            if (note == null && title.isBlank() && md.isBlank()) onDiscard() else onSave(title, md)
+        }
     }
 
     fun startRecord() {
@@ -198,7 +214,7 @@ fun EditorScreen(
     // 参考 app 气泡里的麦克风是「语音输入」：说的话直接变成正文
     val talk = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!heard.isNullOrBlank()) body = insert(body, heard)
+        if (!heard.isNullOrBlank()) js("insertText(" + JSONObject.quote(heard) + ")")
     }
 
     fun dictate() {
@@ -252,7 +268,17 @@ fun EditorScreen(
                 Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { preview = !preview }) {
+            TextButton(onClick = {
+                if (preview) {
+                    preview = false
+                } else {
+                    page?.evaluateJavascript("getMd()") { json ->
+                        val md = runCatching { JSONTokener(json).nextValue() as String }.getOrDefault("")
+                        body = TextFieldValue(md)
+                    }
+                    preview = true
+                }
+            }) {
                 Text(if (preview) "编辑" else "预览", style = MaterialTheme.typography.labelLarge)
             }
             TextButton(onClick = { leave() }) {
@@ -306,58 +332,13 @@ fun EditorScreen(
         if (preview) {
             MarkdownPreview(text = body.text, modifier = Modifier.weight(1f))
         } else {
-            BasicTextField(
-                value = body,
-                onValueChange = { body = it },
-                textStyle = TextStyle(
-                    fontSize = 16.sp,
-                    lineHeight = 26.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                visualTransformation = MarkedUp(
-                    accent = MaterialTheme.colorScheme.primary,
-                    faint = MaterialTheme.colorScheme.outline,
-                ),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+            RichBody(
+                markdown = body.text,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                decorationBox = { inner ->
-                    Box {
-                        if (body.text.isEmpty()) {
-                            Text(
-                                // 参考 app 正文的占位原文
-                                text = "输入文本, 键入\"/\"快速调整格式",
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.outline,
-                            )
-                        }
-                        inner()
-                    }
-                },
+                    .weight(1f),
+                onReady = { page = it },
             )
-        }
-
-        // 底部气泡（照 COUIBottomFloatingEditToolbar）：16dp 边距、圆角胶囊、大阴影，
-        // 不输入时只有两个入口，输入法一冒头就多出几个，尺寸变化走弹簧
-        if (slashOpen) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Space.m, vertical = Space.xxs)
-                    .shadow(6.dp, RoundedCornerShape(20.dp))
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = Space.xs, vertical = Space.xxs),
-                horizontalArrangement = Arrangement.spacedBy(Space.xxs),
-            ) {
-                for ((label, prefix) in Blocks) {
-                    TextChip(label) { pickBlock(prefix) }
-                }
-            }
         }
 
         Box(
@@ -388,7 +369,7 @@ fun EditorScreen(
                                 panel = Panel.FORMAT
                             }
                             if (typing) {
-                                BubbleIcon(Icons.Filled.Checklist, "待办") { body = prefixLines(body, "- [ ] ") }
+                                BubbleIcon(Icons.Filled.Checklist, "待办") { js("insertText('- [ ] ')") }
                                 BubbleIcon(Icons.Filled.Photo, "图片") {
                                     pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
@@ -412,16 +393,16 @@ fun EditorScreen(
                                 horizontalArrangement = Arrangement.spacedBy(Space.xxs),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                BubbleIcon(Icons.Filled.Title, "块类型") { body = insert(body, "/") }
-                                BubbleIcon(Icons.Filled.FormatBold, "加粗") { body = wrap(body, "**") }
-                                BubbleIcon(Icons.Filled.FormatItalic, "斜体") { body = wrap(body, "*") }
-                                BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线") { body = wrap(body, "~~") }
-                                BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表") { body = prefixLines(body, "- ") }
-                                BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表") { body = prefixLines(body, "1. ") }
-                                BubbleIcon(Icons.Filled.FormatQuote, "注释") { body = prefixLines(body, "> ") }
-                                BubbleIcon(Icons.Filled.CheckBox, "待办") { body = prefixLines(body, "- [ ] ") }
+                                BubbleIcon(Icons.Filled.Title, "块类型") { js("cmd('formatBlock','h2')") }
+                                BubbleIcon(Icons.Filled.FormatBold, "加粗") { js("cmd('bold')") }
+                                BubbleIcon(Icons.Filled.FormatItalic, "斜体") { js("cmd('italic')") }
+                                BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线") { js("cmd('strikeThrough')") }
+                                BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表") { js("cmd('insertUnorderedList')") }
+                                BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表") { js("cmd('insertOrderedList')") }
+                                BubbleIcon(Icons.Filled.FormatQuote, "注释") { js("cmd('formatBlock','blockquote')") }
+                                BubbleIcon(Icons.Filled.CheckBox, "待办") { js("insertText('- [ ] ')") }
                                 BubbleIcon(Icons.Filled.Code, "代码") { body = wrap(body, "`") }
-                                BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { body = insert(body, "\n\n---\n\n") }
+                                BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { js("insertHr()") }
                             }
                         }
 
@@ -440,7 +421,7 @@ fun EditorScreen(
                             BubbleIcon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, "录音") {
                                 if (recording) stopRecord() else askMic.launch(android.Manifest.permission.RECORD_AUDIO)
                             }
-                            BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { body = insert(body, "\n\n---\n\n") }
+                            BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { js("insertHr()") }
                             BubbleIcon(Icons.Filled.Close, "收起") { panel = Panel.NONE }
                         }
                     }

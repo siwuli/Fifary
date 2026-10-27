@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    padding: 4px 20px 80px 20px;
+    font: 16px/1.65 -apple-system, "sans-serif";
+    color: #1b1b1f;
+    -webkit-user-select: text;
+    outline: none;
+  }
+  h1 { font-size: 22px; margin: 14px 0 6px; }
+  h2 { font-size: 20px; margin: 14px 0 6px; }
+  h3 { font-size: 18px; margin: 12px 0 6px; }
+  p { margin: 6px 0; }
+  blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid #d9c07a; color: #666; }
+  code { font-family: monospace; background: #f2f2f4; padding: 1px 4px; border-radius: 4px; }
+  img { max-width: 100%; border-radius: 12px; margin: 8px 0; }
+  hr { border: none; border-top: 1px solid #e2e2e6; margin: 14px 0; }
+  ul, ol { margin: 6px 0; padding-left: 24px; }
+  .todo { display: flex; gap: 8px; align-items: flex-start; }
+</style>
+</head>
+<body contenteditable="true" spellcheck="false"></body>
+<script>
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function inline(s) {
+  return esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/~~([^~]+)~~/g, '<strike>$1</strike>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*([^*]+)\*/g, '<i>$1</i>');
+}
+function mdToHtml(md) {
+  var out = [];
+  var lines = (md || '').split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var img = line.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
+    if (img) { out.push('<p><img src="' + img[1] + '"></p>'); continue; }
+    if (line.indexOf('### ') === 0) { out.push('<h3>' + inline(line.slice(4)) + '</h3>'); continue; }
+    if (line.indexOf('## ') === 0) { out.push('<h2>' + inline(line.slice(3)) + '</h2>'); continue; }
+    if (line.indexOf('# ') === 0) { out.push('<h1>' + inline(line.slice(2)) + '</h1>'); continue; }
+    if (line.indexOf('- [ ] ') === 0) { out.push('<p class="todo">☐ ' + inline(line.slice(6)) + '</p>'); continue; }
+    if (line.indexOf('- [x] ') === 0) { out.push('<p class="todo">☑ ' + inline(line.slice(6)) + '</p>'); continue; }
+    if (line.indexOf('- ') === 0) { out.push('<p>• ' + inline(line.slice(2)) + '</p>'); continue; }
+    if (line.indexOf('> ') === 0) { out.push('<blockquote>' + inline(line.slice(2)) + '</blockquote>'); continue; }
+    if (line.trim() === '---') { out.push('<hr>'); continue; }
+    if (line.trim() === '') { continue; }
+    out.push('<p>' + inline(line) + '</p>');
+  }
+  return out.join('');
+}
+function ser(node) {
+  var s = '';
+  for (var i = 0; i < node.childNodes.length; i++) {
+    var n = node.childNodes[i];
+    if (n.nodeType === 3) { s += n.nodeValue; continue; }
+    var tag = n.nodeName;
+    if (tag === 'B' || tag === 'STRONG') s += '**' + ser(n) + '**';
+    else if (tag === 'I' || tag === 'EM') s += '*' + ser(n) + '*';
+    else if (tag === 'STRIKE' || tag === 'S' || tag === 'DEL') s += '~~' + ser(n) + '~~';
+    else if (tag === 'CODE') s += '`' + ser(n) + '`';
+    else if (tag === 'BR') s += '\n';
+    else if (tag === 'IMG') s += '![](' + n.getAttribute('src') + ')';
+    else s += ser(n);
+  }
+  return s;
+}
+function htmlToMd() {
+  var lines = [];
+  var kids = document.body.children;
+  for (var i = 0; i < kids.length; i++) {
+    var el = kids[i];
+    var tag = el.nodeName;
+    if (tag === 'HR') { lines.push('---'); continue; }
+    if (tag === 'IMG') { lines.push('![](' + el.getAttribute('src') + ')'); continue; }
+    if (tag === 'UL') {
+      for (var j = 0; j < el.children.length; j++) lines.push('- ' + ser(el.children[j]).trim());
+      continue;
+    }
+    if (tag === 'OL') {
+      for (var k = 0; k < el.children.length; k++) lines.push((k + 1) + '. ' + ser(el.children[k]).trim());
+      continue;
+    }
+    var text = ser(el).replace(/\u00a0/g, ' ').trim();
+    if (text === '') {
+      var img = el.querySelector('img');
+      if (img) lines.push('![](' + img.getAttribute('src') + ')');
+      continue;
+    }
+    if (tag === 'H1') lines.push('# ' + text);
+    else if (tag === 'H2') lines.push('## ' + text);
+    else if (tag === 'H3') lines.push('### ' + text);
+    else if (tag === 'BLOCKQUOTE') lines.push('> ' + text);
+    else if (text.indexOf('☐ ') === 0) lines.push('- [ ] ' + text.slice(2));
+    else if (text.indexOf('☑ ') === 0) lines.push('- [x] ' + text.slice(2));
+    else if (text.indexOf('• ') === 0) lines.push('- ' + text.slice(2));
+    else lines.push(text);
+  }
+  return lines.join('\n');
+}
+function setMd(md) {
+  document.body.innerHTML = mdToHtml(md);
+}
+function getMd() {
+  return htmlToMd();
+}
+function cmd(name, value) {
+  document.body.focus();
+  document.execCommand(name, false, value || null);
+}
+function insertImage(path) {
+  cmd('insertHTML', '<img src="' + path + '">');
+}
+function insertText(text) {
+  cmd('insertText', text);
+}
+function insertHr() {
+  cmd('insertHorizontalRule');
+}
+</script>
+</html>
