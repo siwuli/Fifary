@@ -87,6 +87,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.fifary.data.Attach
@@ -203,6 +213,9 @@ fun EditorScreen(
     // 输入法一冒头气泡就长开（多出待办/图片/语音），缩回去就只剩「格式」「插入」
     val typing = WindowInsets.isImeVisible && !preview
 
+    // 收起输入法就把格式面板一并合上，不然它会一直挂在下面
+    LaunchedEffect(typing) { if (!typing) panel = Panel.NONE }
+
     // 参考 app 的「标题」入口其实是往正文里打一个 /，再弹块类型让人选
     fun blockLineStart(): Int {
         val caret = body.selection.end.coerceIn(0, body.text.length)
@@ -302,6 +315,10 @@ fun EditorScreen(
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                visualTransformation = MarkedUp(
+                    accent = MaterialTheme.colorScheme.primary,
+                    faint = MaterialTheme.colorScheme.outline,
+                ),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -383,22 +400,29 @@ fun EditorScreen(
                         Panel.FORMAT -> Row(
                             Modifier
                                 .height(64.dp)
-                                .horizontalScroll(rememberScrollState())
                                 .padding(horizontal = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(Space.xxs),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            BubbleIcon(Icons.Filled.Title, "块类型") { body = insert(body, "/") }
-                            BubbleIcon(Icons.Filled.FormatBold, "加粗") { body = wrap(body, "**") }
-                            BubbleIcon(Icons.Filled.FormatItalic, "斜体") { body = wrap(body, "*") }
-                            BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线") { body = wrap(body, "~~") }
-                            BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表") { body = prefixLines(body, "- ") }
-                            BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表") { body = prefixLines(body, "1. ") }
-                            BubbleIcon(Icons.Filled.FormatQuote, "注释") { body = prefixLines(body, "> ") }
-                            BubbleIcon(Icons.Filled.CheckBox, "待办") { body = prefixLines(body, "- [ ] ") }
-                            BubbleIcon(Icons.Filled.Code, "代码") { body = wrap(body, "`") }
-                            BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { body = insert(body, "\n\n---\n\n") }
+                            // 收起钉在最前面，别跟着横滑跑出屏幕（参考 app 的面板 ✕ 也是固定的）
                             BubbleIcon(Icons.Filled.Close, "收起") { panel = Panel.NONE }
+                            Row(
+                                Modifier
+                                    .weight(1f, fill = false)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(Space.xxs),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                BubbleIcon(Icons.Filled.Title, "块类型") { body = insert(body, "/") }
+                                BubbleIcon(Icons.Filled.FormatBold, "加粗") { body = wrap(body, "**") }
+                                BubbleIcon(Icons.Filled.FormatItalic, "斜体") { body = wrap(body, "*") }
+                                BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线") { body = wrap(body, "~~") }
+                                BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表") { body = prefixLines(body, "- ") }
+                                BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表") { body = prefixLines(body, "1. ") }
+                                BubbleIcon(Icons.Filled.FormatQuote, "注释") { body = prefixLines(body, "> ") }
+                                BubbleIcon(Icons.Filled.CheckBox, "待办") { body = prefixLines(body, "- [ ] ") }
+                                BubbleIcon(Icons.Filled.Code, "代码") { body = wrap(body, "`") }
+                                BubbleIcon(Icons.Filled.HorizontalRule, "分割线") { body = insert(body, "\n\n---\n\n") }
+                            }
                         }
 
                         Panel.INSERT -> Row(
@@ -461,6 +485,71 @@ private fun TextChip(label: String, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+// ---- 边写边看：Markdown 标记留在原地但淡下去，内容按格式渲染（不改字，所以光标不用重映射） ----
+
+private val InlineMarks = listOf(
+    Regex("""\*\*([^*\n]+)\*\*""") to SpanStyle(fontWeight = FontWeight.Bold),
+    Regex("""~~([^~\n]+)~~""") to SpanStyle(textDecoration = TextDecoration.LineThrough),
+    Regex("""`([^`\n]+)`""") to SpanStyle(fontFamily = FontFamily.Monospace),
+    Regex("""(?<![*\w])\*([^*\n]+)\*(?![*\w])""") to SpanStyle(fontStyle = FontStyle.Italic),
+)
+
+private val OrderedMark = Regex("""^\d+[.)] """)
+private val ImageMark = Regex("""^!\[[^]]*]\([^)]*\)$""")
+
+private class MarkedUp(private val accent: Color, private val faint: Color) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText =
+        TransformedText(markedUp(text.text, accent, faint), OffsetMapping.Identity)
+}
+
+private fun markedUp(src: String, accent: Color, faint: Color): AnnotatedString {
+    val builder = AnnotatedString.Builder(src)
+    var at = 0
+    while (at < src.length) {
+        val end = src.indexOf('\n', at).let { if (it < 0) src.length else it }
+        val line = src.substring(at, end)
+        val level = when {
+            line.startsWith("### ") -> 3
+            line.startsWith("## ") -> 2
+            line.startsWith("# ") -> 1
+            else -> 0
+        }
+        when {
+            level > 0 -> {
+                builder.addStyle(SpanStyle(color = faint), at, at + level + 1)
+                builder.addStyle(
+                    SpanStyle(fontSize = (22 - level * 2).sp, fontWeight = FontWeight.SemiBold),
+                    at + level + 1,
+                    end,
+                )
+            }
+
+            line.startsWith("- [ ] ") || line.startsWith("- [x] ") ->
+                builder.addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold), at, at + 5)
+
+            line.startsWith("- ") || line.startsWith("* ") || line.startsWith("> ") ->
+                builder.addStyle(SpanStyle(color = accent), at, at + 2)
+
+            else -> OrderedMark.find(line)?.let {
+                builder.addStyle(SpanStyle(color = accent), at, at + it.value.length)
+            }
+        }
+        if (ImageMark.matches(line.trim())) {
+            builder.addStyle(SpanStyle(color = faint, fontFamily = FontFamily.Monospace), at, end)
+        }
+        for ((regex, style) in InlineMarks) {
+            for (hit in regex.findAll(line)) {
+                val inner = hit.groups[1] ?: continue
+                builder.addStyle(SpanStyle(color = faint), at + hit.range.first, at + inner.range.first)
+                builder.addStyle(style, at + inner.range.first, at + inner.range.last + 1)
+                builder.addStyle(SpanStyle(color = faint), at + inner.range.last + 1, at + hit.range.last + 1)
+            }
+        }
+        at = end + 1
+    }
+    return builder.toAnnotatedString()
 }
 
 // ---- 选区操作：选中就包住，再点一次拆掉 ----
