@@ -57,7 +57,7 @@ fun FifaryApp() {
                         // 切分组替换根页面，不堆栈：返回键始终是"退出"
                         onSelectCategory = { path -> navigator.toRoot(Screen.Notes(path)) },
                         onOpenNote = { note -> navigator.open(Screen.Editor(note.path)) },
-                        onCreate = { navigator.open(Screen.Editor(NotesStore.create(folder).path)) },
+                        onCreate = { navigator.open(Screen.Editor("", folder)) },
                         onMove = { paths, target -> NotesStore.move(paths, target) },
                         onDelete = { paths -> NotesStore.delete(paths) },
                         onRestore = { paths -> NotesStore.restore(paths) },
@@ -88,13 +88,16 @@ fun FifaryApp() {
 
                 is Screen.Editor -> {
                     val note = NotesStore.byPath(screen.path)
-                    if (note != null) {
-                        EditorScreen(
-                            note = if (note.secret) note.copy(body = PrivateVault.plain(note)) else note,
-                            onBack = { navigator.back() },
-                            onBodyChange = { body -> NotesStore.updatePlain(note.path, body) },
-                        )
-                    }
+                        ?.let { n -> if (n.secret) n.copy(body = PrivateVault.plain(n)) else n }
+                    EditorScreen(
+                        note = note,
+                        folder = note?.folder ?: screen.folder,
+                        onDiscard = { navigator.back() },
+                        onSave = { title, body ->
+                            NotesStore.save(screen.path, screen.folder, title, body)
+                            navigator.back()
+                        },
+                    )
                 }
 
                 Screen.Categories -> CategoryManagerScreen(

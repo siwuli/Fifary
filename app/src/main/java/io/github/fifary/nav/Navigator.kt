@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 sealed interface Screen {
     // 分类 = 目录。folder 是相对 vault 根的路径，"" 是根目录
     data class Notes(val folder: String) : Screen
-    data class Editor(val path: String) : Screen
+    data class Editor(val path: String, val folder: String = "") : Screen
     data object Categories : Screen
     data object Settings : Screen
 }

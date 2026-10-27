@@ -1,5 +1,6 @@
 package io.github.fifary.data
 
+import android.content.Context
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -29,7 +30,6 @@ data class FolderEntry(
     val noteCount: Int,
 )
 
-// 占位数据：只为了验证交互。P0 接 VaultStore 后整块替换（目录改由文件系统枚举）。
 object NotesStore {
 
     const val DEFAULT = "默认"
@@ -40,9 +40,13 @@ object NotesStore {
 
     const val TRASH_KEEP_MS = 30L * 24 * 60 * 60 * 1000
 
+    // 参考 app 里空标题存成「无标题」
+    private const val UNTITLED = "无标题"
+
     private val now = System.currentTimeMillis()
 
-    val all: SnapshotStateList<Note> = mutableStateListOf(
+    // 第一次装、vault 还不存在时灌一次的示例笔记；之后盘上有什么就显示什么
+    private val seed: List<Note> = listOf(
         Note(
             path = "欢迎使用 Fifary.md",
             body = "这是一个纯本地 Markdown 笔记客户端。\n\n" +
@@ -118,25 +122,68 @@ object NotesStore {
         ),
     )
 
+    val all: SnapshotStateList<Note> = mutableStateListOf()
+
+    private var loaded = false
+
+    fun load(context: Context) {
+        if (loaded) return
+        loaded = true
+        val disk = Vault.open(context)
+        // null = 第一次装；空目录说明用户真把笔记删光了，不能再灌示例
+        if (disk == null) seed.forEach(Vault::save)
+        all.addAll(disk ?: seed)
+        emptyFolders.addAll(Vault.emptyFolderNames())
+        purgeExpiredTrash()
+    }
+
     fun byPath(path: String): Note? = all.firstOrNull { it.path == path }
 
-    fun rewrite(transform: (Note) -> Note) {
-        all.replaceAll(transform)
-    }
-
-    fun updateBody(path: String, body: String) {
-        val index = all.indexOfFirst { it.path == path }
-        if (index < 0) return
-        all[index] = all[index].copy(body = body, updatedAt = System.currentTimeMillis())
-    }
-
-    // 编辑器只管明文：私密笔记在这里转成密文再存，缓存同步失效
-    fun updatePlain(path: String, plain: String) {
-        val note = byPath(path) ?: return
+    // 编辑页只在点「完成」时走这里。标题就是文件名，改标题等于给文件改名；
+    // path 传空的表示新建。返回最终路径（改名后可能变了）。
+    fun save(path: String, folder: String, title: String, body: String): String {
+        val time = System.currentTimeMillis()
+        val name = title.trim().replace("/", " ").ifEmpty { UNTITLED }
         val key = PrivateVault.key
-        val stored = if (note.secret && key != null) Secret.encrypt(key, plain) else plain
-        updateBody(path, stored)
-        PrivateVault.forget(path)
+        val existing = byPath(path)
+
+        if (existing == null) {
+            val secret = folder == PRIVATE
+            val target = if (folder.isEmpty() || folder == PRIVATE || folder == TRASH) DEFAULT else folder
+            val fresh = uniquePath(target, name, null)
+            val note = Note(
+                path = fresh,
+                body = if (secret && key != null) Secret.encrypt(key, body) else body,
+                createdAt = time,
+                updatedAt = time,
+                secret = secret,
+            )
+            all.add(0, note)
+            Vault.save(note)
+            return fresh
+        }
+
+        val stored = if (existing.secret && key != null) Secret.encrypt(key, body) else body
+        val fresh = uniquePath(existing.folder, name, existing.path)
+        if (fresh != existing.path) Vault.move(existing.path, fresh)
+        val at = all.indexOfFirst { it.path == existing.path }
+        if (at >= 0) {
+            all[at] = existing.copy(path = fresh, body = stored, updatedAt = time)
+            Vault.save(all[at])
+        }
+        PrivateVault.forget(fresh)
+        return fresh
+    }
+
+    private fun uniquePath(folder: String, name: String, self: String?): String {
+        val prefix = if (folder.isEmpty()) "" else "$folder/"
+        var path = "$prefix$name.md"
+        var index = 2
+        while (all.any { it.path == path && it.path != self }) {
+            path = "$prefix$name $index.md"
+            index++
+        }
+        return path
     }
 
     // 列表用哪一屏：私密只出私密，最近删除只出删除的
@@ -171,6 +218,7 @@ object NotesStore {
         if (clean == TRASH || clean == PRIVATE) return false
         if (folders().any { it.path == clean }) return false
         emptyFolders.add(clean)
+        Vault.makeFolder(clean)
         return true
     }
 
@@ -183,6 +231,7 @@ object NotesStore {
             if (note.folder == from) note.copy(path = "$clean/${note.name}.md") else note
         }
         if (emptyFolders.remove(from)) emptyFolders.add(clean)
+        Vault.renameFolder(from, clean)
         return true
     }
 
@@ -191,57 +240,39 @@ object NotesStore {
         delete(hit)
     }
 
-    fun create(folder: String): Note {
-        val secret = folder == PRIVATE
-        val target = if (folder.isEmpty() || folder == TRASH || folder == PRIVATE) DEFAULT else folder
-        val base = "未命名笔记"
-        var path = "$target/$base.md"
-        var index = 2
-        while (all.any { it.path == path }) {
-            path = "$target/$base $index.md"
-            index++
-        }
-        val time = System.currentTimeMillis()
-        val key = PrivateVault.key
-        val note = Note(
-            path = path,
-            body = if (secret && key != null) Secret.encrypt(key, "") else "",
-            createdAt = time,
-            updatedAt = time,
-            secret = secret,
-        )
-        all.add(0, note)
-        return note
-    }
-
     private fun expand(paths: Set<String>): List<Note> =
         all.filter { note -> paths.any { it == note.path || note.path.startsWith("$it/") } }
 
-    // 删除 = 进最近删除，30 天后清掉；置顶照旧
+    // 删除 = 进最近删除，30 天后清掉；置顶照旧。文件留在原目录，靠文件头的 deleted 认出来
     fun delete(paths: Set<String>) {
         val time = System.currentTimeMillis()
         val hit = expand(paths).map { it.path }.toSet()
         all.replaceAll { note ->
             if (note.path in hit) note.copy(deletedAt = time, pinned = false) else note
         }
+        saveAll(hit)
     }
 
     fun restore(paths: Set<String>) {
         val hit = expand(paths).map { it.path }.toSet()
         all.replaceAll { note -> if (note.path in hit) note.copy(deletedAt = 0L) else note }
+        saveAll(hit)
     }
 
     fun purge(paths: Set<String>) {
         val hit = expand(paths).map { it.path }.toSet()
         all.removeAll { it.path in hit }
+        hit.forEach(Vault::remove)
     }
 
     fun purgeExpiredTrash() {
         val deadline = System.currentTimeMillis() - TRASH_KEEP_MS
-        all.removeAll { it.deletedAt in 1L..deadline }
+        val dead = all.filter { it.deletedAt in 1L..deadline }.map { it.path }
+        all.removeAll { it.path in dead }
+        dead.forEach(Vault::remove)
     }
 
-    // 移动 = 改路径（分类即目录）
+    // 移动 = 改路径（分类即目录），盘上就是重命名文件
     fun move(paths: Set<String>, folder: String) {
         val target = if (folder.isEmpty()) DEFAULT else folder
         val hit = expand(paths).filter { it.deletedAt == 0L }
@@ -253,13 +284,17 @@ object NotesStore {
                 index++
             }
             val at = all.indexOfFirst { it.path == note.path }
-            if (at >= 0) all[at] = all[at].copy(path = path)
+            if (at >= 0) {
+                Vault.move(note.path, path)
+                all[at] = all[at].copy(path = path)
+            }
         }
     }
 
     fun togglePin(paths: Set<String>) {
         val hit = expand(paths).map { it.path }.toSet()
         all.replaceAll { note -> if (note.path in hit) note.copy(pinned = !note.pinned) else note }
+        saveAll(hit)
     }
 
     // 设为私密 / 取消私密。加密和解密都在这里做，别的层只看到明文。
@@ -272,6 +307,7 @@ object NotesStore {
                 note
             }
         }
+        saveAll(hit)
     }
 
     fun makePublic(paths: Set<String>, key: ByteArray) {
@@ -283,6 +319,11 @@ object NotesStore {
                 note
             }
         }
+        saveAll(hit)
+    }
+
+    private fun saveAll(paths: Set<String>) {
+        paths.forEach { path -> byPath(path)?.let(Vault::save) }
     }
 
     // 搜索标题和正文。私密笔记传进来的是已解密的明文。

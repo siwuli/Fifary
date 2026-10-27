@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.fifary"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.6"
+        versionCode = 8
+        versionName = "0.8"
     }
 
     buildFeatures {
@@ -35,6 +35,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.icons.core)
+    implementation(libs.icons.extended)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 }
