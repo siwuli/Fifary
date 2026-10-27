@@ -5,123 +5,516 @@
 <style>
   html, body { margin: 0; padding: 0; }
   body {
-    padding: 4px 20px 80px 20px;
+    padding: 4px 20px 120px 20px;
     font: 16px/1.65 -apple-system, "sans-serif";
     color: #1b1b1f;
     -webkit-user-select: text;
     outline: none;
+    word-break: break-word;
   }
-  h1 { font-size: 22px; margin: 14px 0 6px; }
-  h2 { font-size: 20px; margin: 14px 0 6px; }
-  h3 { font-size: 18px; margin: 12px 0 6px; }
-  p { margin: 6px 0; }
-  blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid #d9c07a; color: #666; }
+  body:empty::before { content: "输入文本，键入“/”快速调整格式"; color: #b8b8bc; }
+  h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
+  h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
+  p { margin: 6px 0; min-height: 1.65em; }
+  blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid #d9c07a; color: #666; font-size: 14px; }
   code { font-family: monospace; background: #f2f2f4; padding: 1px 4px; border-radius: 4px; }
   img { max-width: 100%; border-radius: 12px; margin: 8px 0; }
   hr { border: none; border-top: 1px solid #e2e2e6; margin: 14px 0; }
   ul, ol { margin: 6px 0; padding-left: 24px; }
-  .todo { display: flex; gap: 8px; align-items: flex-start; }
+  li { margin: 2px 0; }
+  a { color: #2f6bff; }
+  mark { background: #ffe9a8; }
+  ul.todo { list-style: none; padding-left: 0; }
+  ul.todo > li { display: flex; gap: 8px; align-items: flex-start; }
+  ul.todo > li > input { width: 18px; height: 18px; margin: 4px 0 0 0; flex: none; accent-color: #2f6bff; }
+  ul.todo > li[data-done="1"] > .t { color: #9a9a9e; text-decoration: line-through; }
+  #slash { position: fixed; left: 10px; right: 10px; bottom: 10px; display: none; background: #fff; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,.18); padding: 6px; z-index: 9; }
+  #slash span { display: inline-block; margin: 3px; padding: 7px 12px; border-radius: 12px; font-size: 14px; background: #f4f4f6; }
 </style>
 </head>
 <body contenteditable="true" spellcheck="false"></body>
+<div id="slash"></div>
 <script>
-function esc(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 function inline(s) {
-  return esc(s)
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .replace(/~~([^~]+)~~/g, '<strike>$1</strike>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*([^*]+)\*/g, '<i>$1</i>');
+  var keep = [];
+  s = s.replace(/<(\/?)(u|mark|sub|sup|span)(\s[^>]*)?>/gi, function (m) {
+    keep.push(m);
+    return '\u0001' + (keep.length - 1) + '\u0001';
+  });
+  s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s = s
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (m, alt, src) { return '<img src="' + src + '" alt="' + alt + '">'; })
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (m, t, href) { return '<a href="' + href + '">' + t + '</a>'; })
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/~~([^~\n]+)~~/g, '<s>$1</s>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+  return s.replace(/\u0001(\d+)\u0001/g, function (m, i) { return keep[+i]; });
 }
+
+function todoRun(L, cur) {
+  var out = '<ul class="todo">';
+  while (cur.i < L.length) {
+    var m = L[cur.i].trim().match(/^[-*]\s+\[([ xX])\]\s*(.*)$/);
+    if (!m) break;
+    var done = /x/i.test(m[1]);
+    out += '<li data-done="' + (done ? 1 : 0) + '"><input type="checkbox" contenteditable="false"' +
+      (done ? ' checked' : '') + '><span class="t">' + inline(m[2]) + '</span></li>';
+    cur.i++;
+  }
+  return out + '</ul>';
+}
+
+function listRun(L, cur) {
+  var out = '', stack = [];
+  function closeOne() { var e = stack.pop(); out += '</li></' + e.tag + '>'; }
+  while (cur.i < L.length) {
+    var raw = L[cur.i], t = raw.trim();
+    if (t === '') { cur.i++; continue; }
+    var m = t.match(/^([-*+]|\d+\.)\s+(.*)$/);
+    if (!m) break;
+    var ind = raw.length - raw.replace(/^[ \t]+/, '').length;
+    var tag = /^\d+\.$/.test(m[1]) ? 'ol' : 'ul';
+    if (!stack.length) {
+      stack.push({ tag: tag, ind: ind });
+      out += '<' + tag + '>';
+    } else {
+      var top = stack[stack.length - 1];
+      if (ind > top.ind) {
+        stack.push({ tag: tag, ind: ind });
+        out += '<' + tag + '>';
+      } else if (ind < top.ind) {
+        while (stack.length > 1 && ind < stack[stack.length - 1].ind) closeOne();
+        out += '</li>';
+      } else if (tag !== top.tag) {
+        closeOne();
+        stack.push({ tag: tag, ind: ind });
+        out += '<' + tag + '>';
+      } else {
+        out += '</li>';
+      }
+    }
+    out += '<li>' + inline(m[2]);
+    cur.i++;
+  }
+  while (stack.length) closeOne();
+  return out;
+}
+
 function mdToHtml(md) {
-  var out = [];
-  var lines = (md || '').split('\n');
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    var img = line.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
-    if (img) { out.push('<p><img src="' + img[1] + '"></p>'); continue; }
-    if (line.indexOf('### ') === 0) { out.push('<h3>' + inline(line.slice(4)) + '</h3>'); continue; }
-    if (line.indexOf('## ') === 0) { out.push('<h2>' + inline(line.slice(3)) + '</h2>'); continue; }
-    if (line.indexOf('# ') === 0) { out.push('<h1>' + inline(line.slice(2)) + '</h1>'); continue; }
-    if (line.indexOf('- [ ] ') === 0) { out.push('<p class="todo">☐ ' + inline(line.slice(6)) + '</p>'); continue; }
-    if (line.indexOf('- [x] ') === 0) { out.push('<p class="todo">☑ ' + inline(line.slice(6)) + '</p>'); continue; }
-    if (line.indexOf('- ') === 0) { out.push('<p>• ' + inline(line.slice(2)) + '</p>'); continue; }
-    if (line.indexOf('> ') === 0) { out.push('<blockquote>' + inline(line.slice(2)) + '</blockquote>'); continue; }
-    if (line.trim() === '---') { out.push('<hr>'); continue; }
-    if (line.trim() === '') { continue; }
-    out.push('<p>' + inline(line) + '</p>');
+  var L = (md || '').replace(/\r/g, '').split('\n'), out = [], cur = { i: 0 };
+  while (cur.i < L.length) {
+    var t = L[cur.i].trim();
+    if (t === '') { cur.i++; continue; }
+    if (/^<(div|p|h1|h2|h3|ul|ol|blockquote|hr|img)\b/i.test(t)) { out.push(t); cur.i++; continue; }
+    if (t === '---') { out.push('<hr>'); cur.i++; continue; }
+    var h = t.match(/^(#{1,3})\s+(.*)$/);
+    if (h) {
+      var lv = h[1].length;
+      out.push('<h' + lv + '>' + inline(h[2]) + '</h' + lv + '>');
+      cur.i++;
+      continue;
+    }
+    if (/^>\s?/.test(t)) { out.push('<blockquote>' + inline(t.replace(/^>\s?/, '')) + '</blockquote>'); cur.i++; continue; }
+    if (/^[-*]\s+\[[ xX]\]\s*/.test(t)) { out.push(todoRun(L, cur)); continue; }
+    if (/^([-*+]|\d+\.)\s+/.test(t)) { out.push(listRun(L, cur)); continue; }
+    out.push('<p>' + inline(t) + '</p>');
+    cur.i++;
   }
   return out.join('');
 }
+
+function fmt(open, close, n) {
+  var inner = ser(n);
+  return inner ? open + inner + close : '';
+}
+
 function ser(node) {
   var s = '';
   for (var i = 0; i < node.childNodes.length; i++) {
     var n = node.childNodes[i];
     if (n.nodeType === 3) { s += n.nodeValue; continue; }
+    if (n.nodeType !== 1) continue;
     var tag = n.nodeName;
-    if (tag === 'B' || tag === 'STRONG') s += '**' + ser(n) + '**';
-    else if (tag === 'I' || tag === 'EM') s += '*' + ser(n) + '*';
-    else if (tag === 'STRIKE' || tag === 'S' || tag === 'DEL') s += '~~' + ser(n) + '~~';
-    else if (tag === 'CODE') s += '`' + ser(n) + '`';
-    else if (tag === 'BR') s += '\n';
+    if (tag === 'INPUT') continue;
+    if (tag === 'B' || tag === 'STRONG') s += fmt('**', '**', n);
+    else if (tag === 'I' || tag === 'EM') s += fmt('*', '*', n);
+    else if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL') s += fmt('~~', '~~', n);
+    else if (tag === 'CODE') s += fmt('`', '`', n);
+    else if (tag === 'U') s += fmt('<u>', '</u>', n);
+    else if (tag === 'MARK') s += fmt('<mark>', '</mark>', n);
+    else if (tag === 'A') s += '[' + ser(n) + '](' + n.getAttribute('href') + ')';
     else if (tag === 'IMG') s += '![](' + n.getAttribute('src') + ')';
-    else s += ser(n);
+    else if (tag === 'BR') s += '\n';
+    else if (tag === 'SPAN' && n.getAttribute('style')) {
+      s += '<span style="' + n.getAttribute('style') + '">' + ser(n) + '</span>';
+    } else s += ser(n);
   }
   return s;
 }
+
+function clean(x) { return x.replace(/\u00a0/g, ' ').trim(); }
+
+function listMd(el, depth, ordered) {
+  var pad = '', lines = [];
+  for (var d = 0; d < depth; d++) pad += '  ';
+  for (var i = 0; i < el.children.length; i++) {
+    var li = el.children[i], sub = null, buf = '';
+    for (var j = 0; j < li.childNodes.length; j++) {
+      var c = li.childNodes[j];
+      if (c.nodeType === 1 && /^(UL|OL)$/.test(c.nodeName)) { sub = c; continue; }
+      buf += ser({ childNodes: [c] });
+    }
+    lines.push(pad + (ordered ? (i + 1) + '. ' : '- ') + clean(buf));
+    if (sub) lines = lines.concat(listMd(sub, depth + 1, sub.nodeName === 'OL'));
+  }
+  return lines;
+}
+
 function htmlToMd() {
-  var lines = [];
-  var kids = document.body.children;
+  var lines = [], kids = document.body.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
+    if (!el || el.id === 'slash' || el.nodeName === 'INPUT' || el.nodeName === 'BR') continue;
     var tag = el.nodeName;
     if (tag === 'HR') { lines.push('---'); continue; }
     if (tag === 'IMG') { lines.push('![](' + el.getAttribute('src') + ')'); continue; }
-    if (tag === 'UL') {
-      for (var j = 0; j < el.children.length; j++) lines.push('- ' + ser(el.children[j]).trim());
+    if (tag === 'UL' && el.className.indexOf('todo') >= 0) {
+      for (var j = 0; j < el.children.length; j++) {
+        var li = el.children[j], box = li.querySelector('input');
+        lines.push((box && box.checked ? '- [x] ' : '- [ ] ') + clean(ser(li)));
+      }
       continue;
     }
-    if (tag === 'OL') {
-      for (var k = 0; k < el.children.length; k++) lines.push((k + 1) + '. ' + ser(el.children[k]).trim());
-      continue;
-    }
-    var text = ser(el).replace(/\u00a0/g, ' ').trim();
-    if (text === '') {
-      var img = el.querySelector('img');
-      if (img) lines.push('![](' + img.getAttribute('src') + ')');
-      continue;
-    }
+    if (tag === 'UL' || tag === 'OL') { lines = lines.concat(listMd(el, 0, tag === 'OL')); continue; }
+    if (el.getAttribute('style')) { lines.push(el.outerHTML); continue; }
+    var text = clean(ser(el));
+    if (text === '') continue;
     if (tag === 'H1') lines.push('# ' + text);
     else if (tag === 'H2') lines.push('## ' + text);
     else if (tag === 'H3') lines.push('### ' + text);
     else if (tag === 'BLOCKQUOTE') lines.push('> ' + text);
-    else if (text.indexOf('☐ ') === 0) lines.push('- [ ] ' + text.slice(2));
-    else if (text.indexOf('☑ ') === 0) lines.push('- [x] ' + text.slice(2));
-    else if (text.indexOf('• ') === 0) lines.push('- ' + text.slice(2));
     else lines.push(text);
   }
   return lines.join('\n');
 }
+
 function setMd(md) {
+  var menu = document.getElementById('slash');
   document.body.innerHTML = mdToHtml(md);
+  if (menu) document.body.appendChild(menu);
+  menu = document.getElementById('slash');
+  syncTodos();
+  hist = [];
+  at = -1;
+  snap();
 }
-function getMd() {
-  return htmlToMd();
+
+function getMd() { return htmlToMd(); }
+
+// 撤销/重做：WebView 失焦后 execCommand('undo') 不管用，自己留快照
+var hist = [], at = -1, pending = 0;
+
+function snap() {
+  var html = document.body.innerHTML;
+  if (at >= 0 && hist[at] === html) return;
+  hist = hist.slice(0, at + 1);
+  hist.push(html);
+  if (hist.length > 50) hist.shift();
+  at = hist.length - 1;
 }
-function cmd(name, value) {
-  document.body.focus();
-  document.execCommand(name, false, value || null);
+
+function applySnap(html) {
+  var menu = document.getElementById('slash');
+  document.body.innerHTML = html;
+  if (menu) document.body.appendChild(menu);
+  syncTodos();
 }
+
+function undo() {
+  if (at > 0) applySnap(hist[--at]);
+}
+
+function redo() {
+  if (at < hist.length - 1) applySnap(hist[++at]);
+}
+
+// 点工具栏时 WebView 已经失焦，选区得自己记着；失焦后选区会塌到 body，那种不算数
+var saved = null, lastBlk = null;
+
+document.addEventListener('selectionchange', function () {
+  var s = window.getSelection();
+  if (!s.rangeCount || !s.anchorNode || !document.body.contains(s.anchorNode)) return;
+  var blk = blockOf(s.anchorNode);
+  if (!blk) return;
+  lastBlk = blk;
+  saved = s.getRangeAt(0).cloneRange();
+});
+
+function caretIn(el) {
+  var r = document.createRange();
+  r.selectNodeContents(el);
+  r.collapse(false);
+  var s = window.getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+  saved = r.cloneRange();
+}
+
+// WebView 失焦后 execCommand 一律失效，所以格式全走 DOM，不再指望浏览器
+function selBlock() {
+  var blk = blockOf(saved ? saved.startContainer : null);
+  if (blk) return blk;
+  return lastBlk && document.body.contains(lastBlk) ? lastBlk : null;
+}
+
+function block(tag) {
+  var blk = selBlock();
+  if (!blk) return;
+  var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
+  if (blk.nodeName !== want) {
+    var el = document.createElement(tag);
+    while (blk.firstChild) el.appendChild(blk.firstChild);
+    blk.parentNode.replaceChild(el, blk);
+    caretIn(el);
+  }
+  syncTodos();
+}
+
+// 再点一次同样的样式就拆掉
+function unwrap(el) {
+  var parent = el.parentNode;
+  while (el.firstChild) parent.insertBefore(el.firstChild, el);
+  parent.removeChild(el);
+}
+
+function wrapTag(tag) {
+  var blk = selBlock();
+  if (!blk) return;
+  var node = saved ? saved.startContainer : null;
+  var up = node && node.nodeType === 1 ? node : node.parentNode;
+  var host = up && up.closest ? up.closest(tag) : null;
+  if (host && blk.contains(host)) { unwrap(host); return; }
+  var el = document.createElement(tag);
+  if (saved && !saved.collapsed && blk.contains(saved.startContainer)) {
+    el.appendChild(saved.extractContents());
+    saved.insertNode(el);
+  } else {
+    blk.appendChild(el);
+  }
+  caretIn(el);
+}
+
+function styleBlock(prop, value) {
+  var blk = selBlock();
+  if (blk) blk.style[prop] = value;
+}
+
+function setSize(px) {
+  if (!saved || saved.collapsed) { styleBlock('fontSize', px + 'px'); return; }
+  var el = document.createElement('span');
+  el.style.fontSize = px + 'px';
+  el.appendChild(saved.extractContents());
+  saved.insertNode(el);
+  saved = document.createRange();
+  saved.selectNodeContents(el);
+}
+
+function code() { wrapTag('code'); }
+
+function list(ordered) {
+  var blk = selBlock();
+  if (!blk) return;
+  var tag = ordered ? 'OL' : 'UL';
+  if (blk.nodeName === 'LI') {
+    var host = blk.parentNode;
+    if (host.nodeName === tag) { // 再点一次取消列表
+      var p = document.createElement('p');
+      while (host.firstChild) {
+        var li = host.firstChild;
+        while (li.firstChild && /^(UL|OL)$/.test(li.firstChild.nodeName)) p.appendChild(li.firstChild);
+        while (li.firstChild) p.appendChild(li.firstChild);
+        if (p.lastChild && host.children.length > 1) p.appendChild(document.createElement('br'));
+        host.removeChild(li);
+      }
+      host.parentNode.replaceChild(p, host);
+      caretIn(p);
+      return;
+    }
+    var neo = document.createElement(ordered ? 'ol' : 'ul');
+    while (host.firstChild) neo.appendChild(host.firstChild);
+    host.parentNode.replaceChild(neo, host);
+    return;
+  }
+  var wrap = document.createElement(ordered ? 'ol' : 'ul');
+  var item = document.createElement('li');
+  while (blk.firstChild) item.appendChild(blk.firstChild);
+  wrap.appendChild(item);
+  blk.parentNode.replaceChild(wrap, blk);
+  caretIn(item);
+}
+
+function currentLi() {
+  var node = saved ? saved.startContainer : null;
+  while (node && node !== document.body && node.nodeName !== 'LI') node = node.parentNode;
+  return node && node.nodeName === 'LI' ? node : null;
+}
+
+function wrapTodo(li) {
+  var box = document.createElement('input');
+  box.type = 'checkbox';
+  box.setAttribute('contenteditable', 'false');
+  var span = document.createElement('span');
+  span.className = 't';
+  while (li.firstChild) span.appendChild(li.firstChild);
+  li.setAttribute('data-done', '0');
+  li.appendChild(box);
+  li.appendChild(span);
+}
+
+function syncTodos() {
+  var lis = document.querySelectorAll('ul.todo > li');
+  for (var i = 0; i < lis.length; i++) {
+    if (!lis[i].querySelector('input')) wrapTodo(lis[i]);
+  }
+}
+
+function todo() {
+  var li = currentLi();
+  if (li) {
+    var ul = li.parentNode;
+    ul.classList.add('todo');
+    for (var i = 0; i < ul.children.length; i++) {
+      if (!ul.children[i].querySelector('input')) wrapTodo(ul.children[i]);
+    }
+    return;
+  }
+  var blk = selBlock();
+  if (!blk) return;
+  var list = document.createElement('ul');
+  list.className = 'todo';
+  var item = document.createElement('li');
+  while (blk.firstChild) item.appendChild(blk.firstChild);
+  wrapTodo(item);
+  list.appendChild(item);
+  blk.parentNode.replaceChild(list, blk);
+  caretIn(item.lastChild);
+}
+
+// 插入的东西跟在当前段落后面，落成单独一段
+function insertAfter(node) {
+  var blk = selBlock(), p = document.createElement('p');
+  p.appendChild(node);
+  if (blk && blk.parentNode) blk.parentNode.insertBefore(p, blk.nextSibling);
+  else document.body.appendChild(p);
+}
+
 function insertImage(path) {
-  cmd('insertHTML', '<img src="' + path + '">');
+  var img = document.createElement('img');
+  img.src = path;
+  insertAfter(img);
 }
+
+function insertAudio(path, label) {
+  var a = document.createElement('a');
+  a.href = path;
+  a.textContent = label;
+  insertAfter(a);
+}
+
 function insertText(text) {
-  cmd('insertText', text);
+  var blk = selBlock();
+  if (!blk) {
+    blk = document.createElement('p');
+    document.body.appendChild(blk);
+  }
+  if (saved && blk.contains(saved.startContainer)) {
+    saved.deleteContents();
+    saved.insertNode(document.createTextNode(text));
+  } else {
+    blk.appendChild(document.createTextNode(text));
+  }
 }
+
 function insertHr() {
-  cmd('insertHorizontalRule');
+  var blk = selBlock(), hr = document.createElement('hr');
+  if (blk && blk.parentNode) blk.parentNode.insertBefore(hr, blk.nextSibling);
+  else document.body.appendChild(hr);
 }
+
+var SLASH = [['标题', 'h1'], ['副标题', 'h2'], ['小标题', 'h3'], ['正文', 'p'],
+  ['列表', 'ul'], ['待办', 'todo'], ['注释', 'quote'], ['分割线', 'hr']];
+var slashBlock = null;
+
+function hideMenu() {
+  document.getElementById('slash').style.display = 'none';
+  slashBlock = null;
+}
+
+function blockOf(node) {
+  while (node && node !== document.body && !/^(P|DIV|H1|H2|H3|BLOCKQUOTE|LI)$/.test(node.nodeName)) node = node.parentNode;
+  return node && node !== document.body ? node : null;
+}
+
+function slashCheck() {
+  var blk = blockOf(window.getSelection().anchorNode);
+  if (blk && /^(P|DIV)$/.test(blk.nodeName) && /^(\s?\/)$/.test(blk.textContent)) {
+    slashBlock = blk;
+    document.getElementById('slash').style.display = 'block';
+  } else {
+    hideMenu();
+  }
+}
+
+function applySlash(kind) {
+  var blk = slashBlock;
+  hideMenu();
+  if (!blk) return;
+  blk.textContent = '';
+  saved = document.createRange();
+  saved.selectNodeContents(blk);
+  saved.collapse(false);
+  if (kind === 'hr') return insertHr();
+  if (kind === 'todo') return todo();
+  if (kind === 'ul') return list(false);
+  block(kind === 'quote' ? 'blockquote' : kind);
+}
+
+function align(dir) { styleBlock('textAlign', dir); }
+
+function indent(delta) {
+  var blk = selBlock();
+  if (!blk) return;
+  var cur = parseInt(blk.style.marginLeft || '0', 10);
+  blk.style.marginLeft = Math.max(0, cur + delta) + 'px';
+}
+
+function buildMenu() {
+  var menu = document.getElementById('slash'), html = '';
+  for (var i = 0; i < SLASH.length; i++) {
+    html += '<span data-k="' + SLASH[i][1] + '">' + SLASH[i][0] + '</span>';
+  }
+  menu.innerHTML = html;
+  menu.addEventListener('click', function (e) {
+    var k = e.target && e.target.getAttribute && e.target.getAttribute('data-k');
+    if (k) applySlash(k);
+  });
+}
+
+buildMenu();
+snap();
+document.body.addEventListener('input', function () {
+  syncTodos();
+  slashCheck();
+  clearTimeout(pending);
+  pending = setTimeout(snap, 400);
+});
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (t && t.type === 'checkbox' && t.parentNode && t.parentNode.nodeName === 'LI') {
+    t.parentNode.setAttribute('data-done', t.checked ? '1' : '0');
+  }
+});
 </script>
 </html>
