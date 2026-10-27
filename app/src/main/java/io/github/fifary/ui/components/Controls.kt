@@ -91,7 +91,7 @@ fun TextPill(text: String, onClick: () -> Unit) {
         modifier = Modifier.height(Size.chipHeight),
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, style = MaterialTheme.typography.labelMedium)
+            Text(text, style = MaterialTheme.typography.titleMedium)
         }
     }
 }

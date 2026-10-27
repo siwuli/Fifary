@@ -310,16 +310,22 @@ function wrapTag(tag) {
   var blk = ensureBlock();
   if (!blk) return;
   var node = saved ? saved.startContainer : null;
-  var up = node && node.nodeType === 1 ? node : node.parentNode;
+  var up = node && node.nodeType === 1 ? node : node && node.parentNode;
   var host = up && up.closest ? up.closest(tag) : null;
   if (host && blk.contains(host)) { unwrap(host); return; }
+  var range = saved && !saved.collapsed && blk.contains(saved.startContainer) ? saved : null;
   var el = document.createElement(tag);
-  if (saved && !saved.collapsed && blk.contains(saved.startContainer)) {
-    el.appendChild(saved.extractContents());
-    saved.insertNode(el);
+  if (range) {
+    el.appendChild(range.extractContents());
   } else {
-    blk.appendChild(el);
+    // shortcut: 没有选区（只有光标）时整行生效，等 WebView 能保住输入焦点再做"从下一个字起生效"
+    var kids = [].slice.call(blk.childNodes);
+    for (var i = 0; i < kids.length; i++) {
+      if (!/^(UL|OL|LI)$/.test(kids[i].nodeName)) el.appendChild(kids[i]);
+    }
   }
+  if (!el.firstChild) return;
+  if (range) range.insertNode(el); else blk.appendChild(el);
   caretIn(el);
 }
 
