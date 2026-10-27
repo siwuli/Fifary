@@ -339,16 +339,6 @@ private fun CategoryRow(
         Capsule(selected = folder.isEmpty(), onClick = { onSelectCategory("") }) {
             Text("全部", style = MaterialTheme.typography.labelMedium)
         }
-        categories.forEach { entry ->
-            Capsule(
-                selected = folder == entry.path,
-                onClick = { onSelectCategory(entry.path) },
-            ) {
-                AccentDot(size = 10)
-                Spacer(Modifier.width(Space.xxs))
-                Text(entry.name, style = MaterialTheme.typography.labelMedium)
-            }
-        }
         if (secretEnabled) {
             Capsule(
                 selected = folder == NotesStore.PRIVATE,
@@ -362,6 +352,16 @@ private fun CategoryRow(
                 )
                 Spacer(Modifier.width(Space.xxs))
                 Text("私密", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        categories.forEach { entry ->
+            Capsule(
+                selected = folder == entry.path,
+                onClick = { onSelectCategory(entry.path) },
+            ) {
+                AccentDot(size = 10)
+                Spacer(Modifier.width(Space.xxs))
+                Text(entry.name, style = MaterialTheme.typography.labelMedium)
             }
         }
         Capsule(

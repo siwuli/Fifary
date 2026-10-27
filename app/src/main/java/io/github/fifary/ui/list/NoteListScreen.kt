@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -123,6 +124,11 @@ fun NoteListScreen(
     }
 
     LaunchedEffect(Unit) { NotesStore.purgeExpiredTrash() }
+
+    // 离开私密空间就自动上锁，跟市面上的私密空间一致
+    DisposableEffect(folder) {
+        onDispose { if (privateView) PrivateVault.lock() }
+    }
     BackHandler(enabled = selectionMode) { exitSelection() }
     BackHandler(enabled = !selectionMode && searchOpen) {
         searchOpen = false
@@ -162,7 +168,7 @@ fun NoteListScreen(
     }
     val subtitle = when {
         query.isNotBlank() -> "找到 ${shown.size} 篇"
-        inTrash -> "${shown.size} 篇 · 30 天后自动清理"
+        inTrash -> "${shown.size} 篇 · 删除后保留 30 天"
         privateView -> "${shown.size} 篇 · 已加密"
         else -> "${shown.size} 篇笔记"
     }
@@ -176,6 +182,7 @@ fun NoteListScreen(
         } else if (shown.isEmpty()) {
             EmptyState(
                 modifier = Modifier.fillMaxSize(),
+                lockedHint = privateView,
                 text = when {
                     query.isNotBlank() -> "没有匹配的笔记"
                     inTrash -> "最近删除是空的"
@@ -398,7 +405,7 @@ fun NoteListScreen(
                     .padding(bottom = Space.m)
                     .fillMaxWidth(0.92f),
             )
-        } else {
+        } else if (!inTrash && !locked) {
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
@@ -413,7 +420,7 @@ fun NoteListScreen(
     if (askDelete) {
         ConfirmDialog(
             title = "删除 ${selected.size} 篇笔记？",
-            text = "会移到最近删除，30 天内都能恢复。",
+            text = "会移到「最近删除」，保留 30 天，期间都能恢复。",
             confirmText = "删除",
             onDismiss = { askDelete = false },
             onConfirm = {
@@ -443,7 +450,7 @@ fun NoteListScreen(
     if (askSecret) {
         ConfirmDialog(
             title = "设为私密？",
-            text = "${selected.size} 篇笔记会加密保存，之后查看要先输密码。",
+            text = "${selected.size} 篇笔记会移进「私密笔记」，之后进入私密笔记要输密码。",
             confirmText = "设为私密",
             onDismiss = { askSecret = false },
             onConfirm = {
@@ -590,7 +597,7 @@ private fun LockedState(modifier: Modifier, onUnlock: () -> Unit) {
             color = MaterialTheme.colorScheme.surface,
         ) {
             Text(
-                text = "输入密码查看",
+                text = "输入密码进入私密笔记",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
             )
@@ -599,7 +606,7 @@ private fun LockedState(modifier: Modifier, onUnlock: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier, text: String) {
+private fun EmptyState(modifier: Modifier, text: String, lockedHint: Boolean = false) {
     Column(
         modifier.padding(top = 160.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -618,5 +625,13 @@ private fun EmptyState(modifier: Modifier, text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (lockedHint) {
+            Text(
+                text = "离开这一页或 App 进后台会自动上锁",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = Space.xs),
+            )
+        }
     }
 }

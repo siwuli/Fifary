@@ -192,6 +192,7 @@ object NotesStore {
     }
 
     fun create(folder: String): Note {
+        val secret = folder == PRIVATE
         val target = if (folder.isEmpty() || folder == TRASH || folder == PRIVATE) DEFAULT else folder
         val base = "未命名笔记"
         var path = "$target/$base.md"
@@ -201,7 +202,14 @@ object NotesStore {
             index++
         }
         val time = System.currentTimeMillis()
-        val note = Note(path = path, body = "", createdAt = time, updatedAt = time)
+        val key = PrivateVault.key
+        val note = Note(
+            path = path,
+            body = if (secret && key != null) Secret.encrypt(key, "") else "",
+            createdAt = time,
+            updatedAt = time,
+            secret = secret,
+        )
         all.add(0, note)
         return note
     }

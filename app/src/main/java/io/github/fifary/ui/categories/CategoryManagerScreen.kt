@@ -396,8 +396,8 @@ fun CategoryManagerScreen(
 
     if (askSecret) {
         ConfirmDialog(
-            title = "把分组设为私密？",
-            text = "分组里的笔记会加密保存，之后查看要先输密码。",
+            title = "把分组设为私密笔记本？",
+            text = "分组里的笔记会加密保存，查看时要先输密码。",
             confirmText = "设为私密",
             onDismiss = { askSecret = false },
             onConfirm = {

@@ -188,8 +188,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Column(Modifier.padding(Space.m), verticalArrangement = Arrangement.spacedBy(Space.s)) {
                     Text(
                         text = if (PrivateVault.enabled) {
-                            "私密笔记用密码派生的 AES-GCM 密钥加密保存。改密码会把全部私密笔记用新密钥重新加密，" +
-                                "云备份上传的仍是密文，密码本身不出本机。"
+                            "私密笔记用密码派生的 AES-GCM 密钥加密保存，进入私密笔记只要输一次。" +
+                                "改密码会把全部私密笔记用新密钥重新加密；云备份上传的仍是密文，密码不出本机。"
                         } else {
                             "还没有私密密码。设一个之后，私密笔记会加密保存。"
                         },

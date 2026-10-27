@@ -1,6 +1,10 @@
 package io.github.fifary
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import io.github.fifary.data.Note
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.PrivateVault
@@ -20,6 +24,15 @@ import io.github.fifary.ui.theme.FifaryTheme
 fun FifaryApp() {
     FifaryTheme {
         val navigator = rememberNavigator()
+        val lifecycle = LocalLifecycleOwner.current
+        DisposableEffect(lifecycle) {
+            // 切后台就上锁：私密内容不在最近任务里露脸的时间越长越好
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) PrivateVault.lock()
+            }
+            lifecycle.lifecycle.addObserver(observer)
+            onDispose { lifecycle.lifecycle.removeObserver(observer) }
+        }
 
         PageHost(navigator) { screen ->
             when (screen) {
@@ -53,7 +66,13 @@ fun FifaryApp() {
                         onSetSecret = { paths, secret ->
                             val key = PrivateVault.key
                             if (key != null) {
-                                if (secret) NotesStore.makeSecret(paths, key) else NotesStore.makePublic(paths, key)
+                                if (secret) {
+                                    NotesStore.makeSecret(paths, key)
+                                    // 设为私密 = 把它们挪进私密笔记那一页
+                                    navigator.toRoot(Screen.Notes(NotesStore.PRIVATE))
+                                } else {
+                                    NotesStore.makePublic(paths, key)
+                                }
                             }
                         },
                         onToggleView = {
