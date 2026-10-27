@@ -5,6 +5,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.speech.RecognizerIntent
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -102,6 +103,8 @@ import io.github.fifary.data.NotesStore
 import io.github.fifary.ui.theme.Space
 import org.json.JSONObject
 import org.json.JSONTokener
+import kotlinx.coroutines.delay
+
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -128,6 +131,19 @@ fun EditorScreen(
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var recordFile by remember { mutableStateOf<File?>(null) }
     var recordStart by remember { mutableStateOf(0L) }
+    var recordSec by remember { mutableStateOf(0) }
+
+    // 录音时每秒刷新格子上的秒数：点了没任何变化，等于没反应
+    LaunchedEffect(recorder) {
+        if (recorder == null) {
+            recordSec = 0
+            return@LaunchedEffect
+        }
+        while (true) {
+            recordSec = ((System.currentTimeMillis() - recordStart) / 1000).toInt()
+            delay(1000)
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose { recorder?.release() }
@@ -164,7 +180,12 @@ fun EditorScreen(
             r.prepare()
             r.start()
             r
-        }.getOrNull() ?: return
+        }.getOrNull()
+        if (started == null) {
+            file.delete()
+            Toast.makeText(context, "这台设备没法录音", Toast.LENGTH_SHORT).show()
+            return
+        }
         recorder = started
         recordFile = file
         recordStart = System.currentTimeMillis()
@@ -193,6 +214,7 @@ fun EditorScreen(
     }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startRecord()
+        else Toast.makeText(context, "没有麦克风权限", Toast.LENGTH_SHORT).show()
     }
 
     var shot by remember { mutableStateOf<File?>(null) }
@@ -449,7 +471,7 @@ fun EditorScreen(
                                     Modifier
                                         .clip(RoundedCornerShape(20.dp))
                                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .clickable { panel = Panel.NONE }
+                                        .clickable { if (recorder != null) stopRecord(); panel = Panel.NONE }
                                         .padding(horizontal = 20.dp, vertical = 8.dp),
                                 ) {
                                     Text("关闭", style = MaterialTheme.typography.titleSmall)
@@ -478,17 +500,19 @@ fun EditorScreen(
                             }
                             ExtraRow(
                                 listOf(
-                                    "录音" to Icons.Filled.Mic,
+                                    (if (recorder != null) "录音中 ${recordSec}s" else "录音") to
+                                        (if (recorder != null) Icons.Filled.Stop else Icons.Filled.Mic),
                                     "分割线" to Icons.Filled.HorizontalRule,
                                 ),
+                                activeIndex = if (recorder != null) 0 else -1,
                             ) { label ->
-                                when (label) {
-                                    "录音" -> if (recorder != null) {
+                                when {
+                                    label.startsWith("录音") -> if (recorder != null) {
                                         stopRecord()
                                     } else {
                                         askMic.launch(android.Manifest.permission.RECORD_AUDIO)
                                     }
-                                    "分割线" -> js("insertHr()")
+                                    label == "分割线" -> js("insertHr()")
                                 }
                             }
                         }
@@ -501,14 +525,15 @@ fun EditorScreen(
 
 // 参考 editor_toolbar_extra：childMinWidth 70dp、间距 8dp，图标格子 + 下方小标签
 @Composable
-private fun ExtraRow(items: List<Pair<String, ImageVector>>, onClick: (String) -> Unit) {
+private fun ExtraRow(items: List<Pair<String, ImageVector>>, activeIndex: Int = -1, onClick: (String) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = Space.m, vertical = Space.xs),
         horizontalArrangement = Arrangement.spacedBy(Space.xs),
     ) {
-        items.forEach { (label, icon) ->
+        items.forEachIndexed { i, (label, icon) ->
+            val on = i == activeIndex
             Column(
                 Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -517,16 +542,24 @@ private fun ExtraRow(items: List<Pair<String, ImageVector>>, onClick: (String) -
                     Modifier
                         .size(60.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(
+                            if (on) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
                         .clickable { onClick(label) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(icon, contentDescription = label, modifier = Modifier.size(28.dp))
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(28.dp),
+                    )
                 }
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     minLines = 2,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = Space.xxs),

@@ -271,14 +271,20 @@ function selBlock() {
   return null;
 }
 
-// 空笔记里点「标题」「字号」也得有东西可改
+// 空笔记里点「标题」「字号」也得有东西可改；已经有内容就落到最后一行，不另起一个空段落
 function ensureBlock() {
   var blk = selBlock();
   if (blk) return blk;
-  var last = document.body.lastElementChild;
-  if (last && last.id !== 'slash' && /^(P|DIV|H1|H2|H3|BLOCKQUOTE|LI)$/.test(last.nodeName)) {
-    caretIn(last);
-    return last;
+  var kids = document.body.children, last = null;
+  for (var i = kids.length - 1; i >= 0; i--) {
+    if (kids[i].id === 'slash') continue;
+    if (!kids[i].textContent.trim()) continue; // 只有图片/分割线的段落不算可改的行
+    if (/^(P|DIV|H1|H2|H3|BLOCKQUOTE|UL|OL)$/.test(kids[i].nodeName)) { last = kids[i]; break; }
+  }
+  var target = last && /^(UL|OL)$/.test(last.nodeName) ? last.lastElementChild : last;
+  if (target) {
+    caretIn(target);
+    return target;
   }
   var p = document.createElement('p');
   document.body.insertBefore(p, document.getElementById('slash'));
@@ -286,16 +292,63 @@ function ensureBlock() {
   return p;
 }
 
+// 选中的范围跨了几个块，就返回这几个块（列表取到 li，跳过列表本身）
+function blocksOfRange(range) {
+  var out = [], els = document.body.querySelectorAll('p,h1,h2,h3,blockquote,li');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    if (el.closest('#slash') || el.querySelector('li')) continue;
+    if (range.intersectsNode(el)) out.push(el);
+  }
+  return out;
+}
+
+// 把整块内容套进 tag（列表项保留复选框，嵌套列表不动）
+function wrapWhole(blk, tag) {
+  var el = document.createElement(tag);
+  var kids = [].slice.call(blk.childNodes);
+  for (var i = 0; i < kids.length; i++) {
+    if (/^(UL|OL|LI|INPUT)$/.test(kids[i].nodeName)) continue;
+    el.appendChild(kids[i]);
+  }
+  if (!el.firstChild) return null;
+  blk.appendChild(el);
+  return el;
+}
+
+function unwrapAll(blk, tag) {
+  var h;
+  while ((h = blk.querySelector(tag))) unwrap(h);
+}
+
+function setTag(blk, tag) {
+  var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
+  if (blk.nodeName === want) return blk;
+  var el = document.createElement(tag);
+  while (blk.firstChild) el.appendChild(blk.firstChild);
+  if (blk.nodeName === 'LI') {
+    // 列表项换成标题得先搬出列表，否则 <h1> 会留在 <ul> 里
+    var list = blk.parentNode;
+    list.parentNode.insertBefore(el, list.nextSibling);
+    list.removeChild(blk);
+    if (!list.children.length) list.parentNode.removeChild(list);
+  } else {
+    blk.parentNode.replaceChild(el, blk);
+  }
+  return el;
+}
+
 function block(tag) {
+  var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
+  if (picked.length > 1) {
+    for (var i = 0; i < picked.length; i++) setTag(picked[i], tag);
+    syncTodos();
+    return;
+  }
   var blk = ensureBlock();
   if (!blk) return;
   var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
-  if (blk.nodeName !== want) {
-    var el = document.createElement(tag);
-    while (blk.firstChild) el.appendChild(blk.firstChild);
-    blk.parentNode.replaceChild(el, blk);
-    caretIn(el);
-  }
+  if (blk.nodeName !== want) caretIn(setTag(blk, tag));
   syncTodos();
 }
 
@@ -307,6 +360,15 @@ function unwrap(el) {
 }
 
 function wrapTag(tag) {
+  var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
+  // 跨行选中就整行逐块处理，等于批量调整
+  if (picked.length > 1) {
+    var on = !picked[0].querySelector(tag);
+    for (var i = 0; i < picked.length; i++) {
+      if (on) wrapWhole(picked[i], tag); else unwrapAll(picked[i], tag);
+    }
+    return;
+  }
   var blk = ensureBlock();
   if (!blk) return;
   var node = saved ? saved.startContainer : null;
@@ -314,19 +376,17 @@ function wrapTag(tag) {
   var host = up && up.closest ? up.closest(tag) : null;
   if (host && blk.contains(host)) { unwrap(host); return; }
   var range = saved && !saved.collapsed && blk.contains(saved.startContainer) ? saved : null;
-  var el = document.createElement(tag);
   if (range) {
+    var el = document.createElement(tag);
     el.appendChild(range.extractContents());
+    if (!el.firstChild) return;
+    range.insertNode(el);
+    caretIn(el);
   } else {
     // shortcut: 没有选区（只有光标）时整行生效，等 WebView 能保住输入焦点再做"从下一个字起生效"
-    var kids = [].slice.call(blk.childNodes);
-    for (var i = 0; i < kids.length; i++) {
-      if (!/^(UL|OL|LI)$/.test(kids[i].nodeName)) el.appendChild(kids[i]);
-    }
+    var whole = wrapWhole(blk, tag);
+    if (whole) caretIn(whole);
   }
-  if (!el.firstChild) return;
-  if (range) range.insertNode(el); else blk.appendChild(el);
-  caretIn(el);
 }
 
 function styleBlock(prop, value) {
@@ -335,6 +395,11 @@ function styleBlock(prop, value) {
 }
 
 function setSize(px) {
+  var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
+  if (picked.length > 1) {
+    for (var i = 0; i < picked.length; i++) picked[i].style.fontSize = px + 'px';
+    return;
+  }
   if (!saved || saved.collapsed) { styleBlock('fontSize', px + 'px'); return; }
   var el = document.createElement('span');
   el.style.fontSize = px + 'px';
