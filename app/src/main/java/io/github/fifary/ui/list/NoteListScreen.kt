@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.FolderEntry
 import io.github.fifary.data.Note
@@ -171,7 +172,7 @@ fun NoteListScreen(
     val subtitle = when {
         query.isNotBlank() -> "找到 ${shown.size} 篇"
         inTrash -> "${shown.size} 篇 · 删除后保留 30 天"
-        privateView -> "${shown.size} 篇 · 已加密"
+        privateView -> if (locked) "已加密 · 需要密码" else "${shown.size} 篇 · 已加密"
         else -> "${shown.size} 篇笔记"
     }
 
@@ -186,10 +187,10 @@ fun NoteListScreen(
     Box(Modifier.fillMaxSize()) {
         BouncingBox(Modifier.fillMaxSize()) {
             if (locked) {
-                LockedState(Modifier.fillMaxSize(), onUnlock = { gate.run { } })
+                LockedState(headerHeight, onUnlock = { gate.run { } })
             } else if (shown.isEmpty()) {
                 EmptyState(
-                    modifier = Modifier.fillMaxSize(),
+                    topInset = headerHeight,
                     lockedHint = privateView,
                     text = when {
                         query.isNotBlank() -> "没有匹配的笔记"
@@ -242,7 +243,7 @@ fun NoteListScreen(
                             },
                         )
                     }
-                    if (hasPinned) {
+                    if (hasPinned && others.isNotEmpty()) {
                         item(key = "h-other", span = { GridItemSpan(maxLineSpan) }) {
                             SectionHeader("其他", collapsible = false, collapsed = false) {}
                         }
@@ -310,7 +311,7 @@ fun NoteListScreen(
                             },
                         )
                     }
-                    if (hasPinned) {
+                    if (hasPinned && others.isNotEmpty()) {
                         item(key = "h-other") {
                             SectionHeader("其他", collapsible = false, collapsed = false) {}
                         }
@@ -575,9 +576,12 @@ private fun FloatingNewButton(onCreate: () -> Unit) {
 }
 
 @Composable
-private fun LockedState(modifier: Modifier, onUnlock: () -> Unit) {
+private fun LockedState(topInset: Dp, onUnlock: () -> Unit) {
     Column(
-        modifier.padding(top = 160.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(top = topInset),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -609,9 +613,12 @@ private fun LockedState(modifier: Modifier, onUnlock: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier, text: String, lockedHint: Boolean = false) {
+private fun EmptyState(topInset: Dp, text: String, lockedHint: Boolean = false) {
     Column(
-        modifier.padding(top = 160.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(top = topInset),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(

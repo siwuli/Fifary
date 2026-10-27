@@ -1,8 +1,8 @@
 package io.github.fifary.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.OverscrollEffect
@@ -25,15 +25,18 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-// 平台自带的边缘效果只拉伸内容，顶栏不跟着动，滑到头会跟顶栏脱开。
-// 这里换成一整块橡皮筋：内容和顶栏一起按阻尼下移，松手弹回。
-// shortcut: 只回弹顶部，到底硬停；真要底部回弹再加。
+// 参考 App 的 com.nearme.note.view.refresh.BounceLayout：
+//  · 阻尼系数 2.5（位移 = 手指位移 / 2.5）
+//  · 最大拖动距离 pull_refresh_down_fragment_max_drag_distance 150dip + 24dip 头部留白
+//  · 松手用 Scroller + PathInterpolator(0.3, 0, 0.1, 1) 回弹，不是弹簧
+//  · 上下两头都能拉：到顶还往下拉 = 内容下移；到底还往上拉 = 内容上移
+// shortcut: 只做整块平移，不做毛边拉伸/下拉刷新指示器。
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BouncingBox(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val pull = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val limit = with(LocalDensity.current) { 120.dp.toPx() }
+    val limit = with(LocalDensity.current) { 174.dp.toPx() }
     val connection = remember {
         object : NestedScrollConnection {
             override fun onPostScroll(
@@ -42,8 +45,8 @@ fun BouncingBox(modifier: Modifier = Modifier, content: @Composable BoxScope.() 
                 source: NestedScrollSource,
             ): Offset {
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
-                // 只有到顶还继续往下拉时 available.y 才是负的，剩下的方向一律不动
-                val next = (pull.value - available.y * 0.45f).coerceIn(0f, limit)
+                // available.y > 0 是到顶后继续往下拉，< 0 是到底后继续往上拉
+                val next = (pull.value + available.y / 2.5f).coerceIn(-limit, limit)
                 if (next != pull.value) scope.launch { pull.snapTo(next) }
                 return Offset.Zero
             }
@@ -52,7 +55,7 @@ fun BouncingBox(modifier: Modifier = Modifier, content: @Composable BoxScope.() 
                 if (pull.value == 0f) return Velocity.Zero
                 pull.animateTo(
                     0f,
-                    spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+                    tween(durationMillis = 250, easing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)),
                 )
                 return available
             }
