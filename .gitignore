@@ -12,6 +12,7 @@ _*.js
 _*.txt
 _*.py
 _davroot/
-# ????????
+# 本机专属：签名和打包产物
 keystore/
 keystore.properties
+Fifary-*.apk

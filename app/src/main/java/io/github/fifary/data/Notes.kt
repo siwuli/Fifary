@@ -45,80 +45,18 @@ object NotesStore {
 
     private val now = System.currentTimeMillis()
 
-    // 第一次装、vault 还不存在时灌一次的示例笔记；之后盘上有什么就显示什么
+    // 第一次装、vault 还不存在时灌一篇介绍；之后盘上有什么就显示什么
     private val seed: List<Note> = listOf(
         Note(
-            path = "欢迎使用 Fifary.md",
-            body = "这是一个纯本地 Markdown 笔记客户端。\n\n" +
-                "- 不配置任何服务器也能完整使用\n" +
-                "- 同步走标准 WebDAV，随时可换\n" +
-                "- 分类就是目录，和 Obsidian 一样：文件怎么放，App 里就怎么显示",
+            path = "$DEFAULT/欢迎使用 Fifary.md",
+            body = "Fifary 是一个纯本地 Markdown 笔记 App。\n\n" +
+                "- 笔记就是 .md 文件，目录就是分组，不存数据库\n" +
+                "- 不配置任何服务器也能完整使用，没有账号体系\n" +
+                "- 同步走标准 WebDAV，随时可换，不锁定服务商\n" +
+                "- 还有私密笔记、导入导出、深浅色主题\n\n" +
+                "「设置」里可以改存储位置、语言、配置 WebDAV。这篇笔记随时可以删掉。",
             createdAt = now - 60_000,
             updatedAt = now - 60_000,
-            pinned = true,
-        ),
-        Note(
-            path = "购物清单.md",
-            body = "- 咖啡豆\n- 牛奶\n- 全麦面包\n- 洗衣液\n\n周末去超市前再看一眼。",
-            createdAt = now - 3_600_000,
-            updatedAt = now - 3_600_000,
-        ),
-        Note(
-            path = "灵感收集.md",
-            body = "- 通知栏直接新建笔记\n- 长按快捷记录，落盘后自动收起\n- 搜索按修改时间排序，而不是相关度",
-            createdAt = now - 400_000_000,
-            updatedAt = now - 400_000_000,
-        ),
-        Note(
-            path = "$DEFAULT/新想法.md",
-            body = "没选分组的笔记默认放这里。",
-            createdAt = now - 5_000_000,
-            updatedAt = now - 5_000_000,
-        ),
-        Note(
-            path = "日记/2026-05-12.md",
-            body = "今天把列表的跟手返回调通了。\n\n手指往回拉的时候页面跟着走，松手够远才真的退出，这个感觉比纯动画自然很多。",
-            createdAt = now - 7_200_000,
-            updatedAt = now - 7_200_000,
-        ),
-        Note(
-            path = "日记/2026-05-10.md",
-            body = "整理了一遍目录结构。\n\n工作、日记、读书分开，找东西快很多。",
-            createdAt = now - 90_000_000,
-            updatedAt = now - 90_000_000,
-        ),
-        Note(
-            path = "工作/周会记录.md",
-            body = "结论\n\n1. 本周先把手感跑通，再接文件读写\n2. 同步功能排在文件之后\n3. 冲突策略默认保留两份，不覆盖",
-            createdAt = now - 26_000_000,
-            updatedAt = now - 26_000_000,
-            pinned = true,
-        ),
-        Note(
-            path = "工作/需求草案.md",
-            body = "目标\n\n支持任意标准 WebDAV，不绑定服务商。\n\n约束\n\n- 只发用户配置的请求\n- 无账号体系",
-            createdAt = now - 500_000_000,
-            updatedAt = now - 500_000_000,
-        ),
-        Note(
-            path = "读书/深度工作.md",
-            body = "注意力是稀缺资源。把大块时间留给不需要即时反馈的工作。\n\n忙碌不等于高效。",
-            createdAt = now - 172_000_000,
-            updatedAt = now - 172_000_000,
-        ),
-        Note(
-            path = "读书/代码整洁之道.md",
-            body = "注释只在代码无法表达「为什么」的时候写。\n\n能删的代码就是最好的代码。",
-            createdAt = now - 800_000_000,
-            updatedAt = now - 800_000_000,
-        ),
-        // 最近删除留一条，方便看 30 天倒计时
-        Note(
-            path = "旧的草稿.md",
-            body = "写完发现方向不对，先扔着。",
-            createdAt = now - 900_000_000,
-            updatedAt = now - 900_000_000,
-            deletedAt = now - 3 * 24 * 60 * 60 * 1000L,
         ),
     )
 

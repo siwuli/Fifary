@@ -107,7 +107,15 @@ object Dav {
 
     // ---- WebDAV ----
 
-    private fun base(): String = SettingsStore.davUrl.trim().let { if (it.endsWith("/")) it else "$it/" }
+    // 用户填的地址只当父目录，真正读写的永远是它下面的 Fifary/：
+    // 直接把根目录当同步目录，会和用户 WebDAV 里已有的文件混在一起
+    private fun base(): String {
+        val url = SettingsStore.davUrl.trim().trimEnd('/')
+        if (url.endsWith("/$DIR", true)) return "$url/"
+        return "$url/$DIR/"
+    }
+
+    private const val DIR = "Fifary"
 
     private fun basic(): String {
         val raw = "${SettingsStore.davUser}:${SettingsStore.davPass}"

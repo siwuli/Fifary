@@ -68,7 +68,7 @@ fun SyncScreen(onBack: () -> Unit) {
     if (askUrl) {
         InputDialog(
             title = S("服务器地址"),
-            placeholder = "https://dav.example.com/fifary/",
+            placeholder = "https://dav.example.com/dav/",
             confirmText = S("保存"),
             initial = SettingsStore.davUrl,
             onDismiss = { askUrl = false },
