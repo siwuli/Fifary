@@ -22,6 +22,7 @@ import io.github.fifary.nav.PageHost
 import io.github.fifary.nav.Screen
 import io.github.fifary.nav.rememberNavigator
 import io.github.fifary.ui.categories.CategoryManagerScreen
+import io.github.fifary.ui.components.rememberSecretGate
 import io.github.fifary.ui.editor.EditorScreen
 import io.github.fifary.ui.list.NoteListScreen
 import io.github.fifary.ui.settings.SettingsScreen
@@ -31,11 +32,26 @@ import io.github.fifary.ui.theme.FifaryTheme
 fun FifaryApp() {
     FifaryTheme {
         val navigator = rememberNavigator()
+        val gate = rememberSecretGate()
         val lifecycle = LocalLifecycleOwner.current
+
+        // 私密区域 = 私密列表或一篇私密笔记。只有真的离开这块区域才上锁：
+        // 在私密列表里打开一篇笔记、或者在里面新建，都不该再要一次密码
+        val inPrivate = privateArea(navigator.stack.last())
+        DisposableEffect(inPrivate) {
+            onDispose { if (inPrivate) PrivateVault.lock() }
+        }
+
         DisposableEffect(lifecycle) {
-            // 切后台就上锁：私密内容不在最近任务里露脸的时间越长越好
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP) PrivateVault.lock()
+                when (event) {
+                    // 切后台就上锁：私密内容不能在最近任务里露脸
+                    Lifecycle.Event.ON_STOP -> PrivateVault.lock()
+                    // 回来时私密区域已经锁着了：先把密码要回来，不然这次的改动存不进去
+                    Lifecycle.Event.ON_START ->
+                        if (!PrivateVault.unlocked && privateArea(navigator.stack.last())) gate.run { }
+                    else -> Unit
+                }
             }
             lifecycle.lifecycle.addObserver(observer)
             onDispose { lifecycle.lifecycle.removeObserver(observer) }
@@ -101,8 +117,10 @@ fun FifaryApp() {
                     var path by remember(screen.path) { mutableStateOf(screen.path) }
                     val context = LocalContext.current
                     val stash: (String, String) -> Unit = { title, body ->
-                        // 密码已经清掉（切过后台）时不能存私密笔记：存了就把明文写进密文文件，笔记再也解不开
-                        if (note?.secret == true && !PrivateVault.unlocked) {
+                        // 密码已经清掉（切过后台）时不能存私密内容：存了就是把明文写进密文文件，
+                        // 或者在私密里新建出一篇不加密、列表里还看不见的笔记
+                        val secret = note?.secret == true || (note == null && screen.folder == NotesStore.PRIVATE)
+                        if (secret && !PrivateVault.unlocked) {
                             Toast.makeText(context, "私密笔记已锁定，这次改动没保存", Toast.LENGTH_SHORT).show()
                         } else {
                             path = NotesStore.save(path, screen.folder, title, body)
@@ -147,4 +165,11 @@ fun FifaryApp() {
             }
         }
     }
+}
+
+// 这一屏算不算在私密区域里：私密列表，或者正在编辑一篇私密笔记
+private fun privateArea(screen: Screen): Boolean = when (screen) {
+    is Screen.Notes -> screen.folder == NotesStore.PRIVATE
+    is Screen.Editor -> screen.folder == NotesStore.PRIVATE || NotesStore.byPath(screen.path)?.secret == true
+    else -> false
 }

@@ -1,10 +1,15 @@
 package io.github.fifary.data
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 // 私密笔记：密码只在本机用来越过第一层，解出来的数据密钥只留在内存里，加锁即丢。
 // 改密码 = 用新密码把同一把数据密钥重新包一次，笔记本身不动，所以是瞬间的。
 object PrivateVault {
 
-    var key: ByteArray? = null
+    // Compose 状态：解锁 / 上锁时列表和编辑页要立刻换样子，不能等别的状态顺手带走一次重组
+    var key by mutableStateOf<ByteArray?>(null)
         private set
 
     // 解密结果缓存：列表每帧都会取预览，不能每帧跑一次 AES

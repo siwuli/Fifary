@@ -40,7 +40,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -135,10 +134,6 @@ fun NoteListScreen(
         }
     }
 
-    // 离开私密空间就自动上锁，跟市面上的私密空间一致
-    DisposableEffect(folder) {
-        onDispose { if (privateView) PrivateVault.lock() }
-    }
     BackHandler(enabled = selectionMode) { exitSelection() }
     BackHandler(enabled = !selectionMode && searchOpen) {
         searchOpen = false

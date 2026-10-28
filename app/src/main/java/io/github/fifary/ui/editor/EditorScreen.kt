@@ -227,7 +227,8 @@ fun EditorScreen(
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) readMd { md -> if (md.isNotBlank()) stashNow(titleOf(md), md) }
+            // ON_PAUSE 而不是 ON_STOP：App 在 ON_STOP 上锁，私密笔记得赶在密钥清掉之前落盘
+            if (event == Lifecycle.Event.ON_PAUSE) readMd { md -> if (md.isNotBlank()) stashNow(titleOf(md), md) }
         }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
