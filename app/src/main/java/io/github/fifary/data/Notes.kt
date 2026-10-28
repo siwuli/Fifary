@@ -171,6 +171,10 @@ object NotesStore {
 
         val stored = if (existing.secret && key != null) Secret.encrypt(key, body) else body
         val fresh = uniquePath(existing.folder, name, existing.path)
+        // 只是打开看了一眼、什么都没改：不写盘也不动最后修改时间，
+        // 不然列表上的时间一进出笔记就变成「刚刚」。
+        // 结尾的换行不算改（读回来带不带它取决于文件怎么写的）
+        if (fresh == existing.path && stored.trimEnd('\n') == existing.body.trimEnd('\n')) return fresh
         if (fresh != existing.path) Vault.move(existing.path, fresh)
         val at = all.indexOfFirst { it.path == existing.path }
         if (at >= 0) {
