@@ -522,11 +522,14 @@ function keepEmpty() {
     tail.appendChild(document.createElement('br'));
     document.body.appendChild(tail);
   }
-  // 整篇空的时候留一个标题行（就是「标题」这个格式，不是特殊块），不然光标没地方站
+  // 整篇空的时候留出标题位 + 下面一行正文：标题那行只是「标题」格式，光标进的是正文那行
   if (!document.body.childNodes.length) {
     var h = document.createElement('h1');
     h.appendChild(document.createElement('br'));
+    var p = document.createElement('p');
+    p.appendChild(document.createElement('br'));
     document.body.appendChild(h);
+    document.body.appendChild(p);
   }
   // 提示只给整篇都空的第一行；一有内容就摘掉
   var ph = document.querySelector('.ph');

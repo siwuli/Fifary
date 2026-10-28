@@ -40,26 +40,38 @@ import io.github.fifary.ui.theme.Size
 import io.github.fifary.ui.theme.Space
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 private const val STAGGER_LIMIT = 12
-private val DateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
+private val HmFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+private val DayFormat = SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINA)
+private val DateFormat = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
 private const val MINUTE = 60_000L
 
 // 卡片上的时间是「现在 - 最后修改」的差；列表里有个 20 秒走一次的钟推着它重新算
 internal var clockNow by mutableStateOf(System.currentTimeMillis())
 
-// 时间说法跟参考 App 一致：刚记的用相对时间，旧了直接给日期
+// 说法照参考便签（strings 里就是 %d 分钟前 / 今天 %s / 昨天 %s / yyyy年M月d日 EEEE）：
+// 1 分钟内「刚刚」，1 小时内「N 分钟前」，今天/昨天带时间，再老给年月日 + 星期
 internal fun timeLabel(at: Long): String {
-    val diff = clockNow - at
+    val now = clockNow
+    val diff = now - at
     return when {
         diff < MINUTE -> "刚刚"
         diff < 60 * MINUTE -> "${diff / MINUTE} 分钟前"
-        diff < 24 * 60 * MINUTE -> "${diff / (60 * MINUTE)} 小时前"
-        diff < 48 * 60 * MINUTE -> "昨天"
-        else -> DateFormat.format(Date(at))
+        sameDay(now, at) -> "今天 ${HmFormat.format(Date(at))}"
+        sameDay(now - 24 * 60 * MINUTE, at) -> "昨天 ${HmFormat.format(Date(at))}"
+        else -> DayFormat.format(Date(at))
     }
+}
+
+private fun sameDay(a: Long, b: Long): Boolean {
+    val ca = Calendar.getInstance().apply { timeInMillis = a }
+    val cb = Calendar.getInstance().apply { timeInMillis = b }
+    return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
+        ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR)
 }
 
 @Composable

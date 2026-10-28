@@ -611,4 +611,4 @@ private fun StyleButton(label: String, size: Int, weight: FontWeight, onClick: (
 
 
 private fun stamp(at: Long): String =
-    SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(at))
+    SimpleDateFormat("yyyy年M月d日 EEEE HH:mm", Locale.CHINA).format(Date(at))
