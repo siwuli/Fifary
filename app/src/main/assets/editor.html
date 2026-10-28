@@ -16,6 +16,9 @@
   }
   /* 行高显式给到每个块：光靠 body 的 font 简写，WebView 画光标时会用另一套行高，跟文字错开 */
   h1, h2, h3, p, blockquote, li, div, ul, ol { line-height: 1.65; }
+  /* 空笔记的第一行是标题位：给个灰提示，提示绝对定位，光标才不会被顶到提示文字后面 */
+  body > .ph { position: relative; }
+  body > .ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: #b8b8bc; font-weight: 600; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
@@ -415,6 +418,27 @@ document.body.addEventListener('keydown', function (e) {
   snap();
 });
 
+// 标题行末尾回车 → 下一行按正文来，不然一路都是大字（标题只是个块格式，这里只按标签判断）
+document.body.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  var s = window.getSelection();
+  if (!s.rangeCount) return;
+  var r = s.getRangeAt(0);
+  var host = r.startContainer.nodeType === 3 ? r.startContainer.parentNode : r.startContainer;
+  var blk = blockOf(host);
+  if (!blk || !/^H[123]$/.test(blk.nodeName)) return;
+  var rest = document.createRange();
+  rest.selectNodeContents(blk);
+  rest.setStart(r.endContainer, r.endOffset);
+  if (rest.toString().trim() !== '') return; // 光标在行中间就交给浏览器去拆行
+  e.preventDefault();
+  var p = document.createElement('p');
+  p.appendChild(document.createElement('br'));
+  blk.parentNode.insertBefore(p, blk.nextSibling);
+  caretAt(p, true);
+  snap();
+});
+
 // 标题是正文第一行，但按回车得进正文，不然再多出几行大字
 // WebView 失焦后 execCommand 一律失效，所以格式全走 DOM，不再指望浏览器
 function selBlock() {
@@ -498,12 +522,20 @@ function keepEmpty() {
     tail.appendChild(document.createElement('br'));
     document.body.appendChild(tail);
   }
-  // 整篇空的时候也得留着这一行：没有行盒光标就没地方站，点一下看着像没反应
-  var first = document.body.firstElementChild;
-  if (first || document.body.childNodes.length) return;
-  var p = document.createElement('p');
-  p.appendChild(document.createElement('br'));
-  document.body.appendChild(p);
+  // 整篇空的时候留一个标题行（就是「标题」这个格式，不是特殊块），不然光标没地方站
+  if (!document.body.childNodes.length) {
+    var h = document.createElement('h1');
+    h.appendChild(document.createElement('br'));
+    document.body.appendChild(h);
+  }
+  // 提示只给整篇都空的第一行；一有内容就摘掉
+  var ph = document.querySelector('.ph');
+  if (ph) ph.classList.remove('ph');
+  var head = document.body.firstElementChild;
+  if (!head) return;
+  if (document.body.textContent.trim()) return;
+  if (document.body.querySelector('img,hr,table,input,.player')) return;
+  head.classList.add('ph');
 }
 
 // 选中的范围跨了几个块，就返回这几个块（列表取到 li，跳过列表本身）
