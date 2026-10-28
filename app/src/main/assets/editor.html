@@ -413,9 +413,20 @@ document.body.addEventListener('keydown', function (e) {
   var r = s.getRangeAt(0), n = r.startContainer;
   var host = n.nodeType === 1 ? n : n.parentNode;
   var li = host && host.closest ? host.closest('li') : null;
-  if (!li || !document.body.contains(li) || !startOf(li, r)) return;
+  if (li && document.body.contains(li) && startOf(li, r)) {
+    e.preventDefault();
+    lift(li);
+    snap();
+    return;
+  }
+  // 第一行空着的标题位：在下一行行首退格就把它删掉，整篇变成普通正文（参考便签删得掉标题）
+  var blk = blockOf(host);
+  var prev = blk && blk.previousElementSibling;
+  if (!prev || prev.nodeName !== 'H1' || prev.textContent.trim()) return;
+  if (!startOf(blk, r)) return;
   e.preventDefault();
-  lift(li);
+  document.body.removeChild(prev);
+  keepEmpty();
   snap();
 });
 

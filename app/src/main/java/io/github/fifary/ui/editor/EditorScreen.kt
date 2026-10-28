@@ -193,7 +193,7 @@ fun EditorScreen(
             return
         }
         // 笔记的名字就是正文第一行（参考便签没有单独的标题框）。
-        // 已经起过名的沿用原名，不然一存就把用户的文件改名了
+        // 已经起过名的沿用原名，不然一存就把用户的文件改名了（外面显示的标题照样跟正文走）
         view.evaluateJavascript("getMd()") { json ->
             val md = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
             if (md == null) {

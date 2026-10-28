@@ -31,7 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.Note
-import io.github.fifary.data.NotesStore
 import io.github.fifary.ui.components.SelectCheck
 import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Motion
@@ -204,17 +203,14 @@ internal fun noteLines(body: String): List<String> =
         .filter { it.isNotEmpty() && it != "---" }
         .toList()
 
-// 笔记的名字就是正文第一行（参考便签没有单独的标题），预览从第二行接着
+// 笔记的名字就是正文第一行（参考便签没有单独的标题），预览从第二行接着。
+// 卡片标题永远跟着正文第一行走：文件里第一行改了，外面就得跟着变
 internal fun titleOf(body: String): String = noteLines(body).firstOrNull().orEmpty()
 
 internal fun headingOf(note: Note): Pair<String, String> {
     val lines = noteLines(note.body)
-    if (NotesStore.isUntitled(note.name)) {
-        if (lines.isEmpty()) return note.name to ""
-        return lines.first() to joinPreview(lines.drop(1))
-    }
-    val rest = if (lines.firstOrNull() == note.name) lines.drop(1) else lines
-    return note.name to joinPreview(rest)
+    if (lines.isEmpty()) return note.name to ""
+    return lines.first() to joinPreview(lines.drop(1))
 }
 
 private fun joinPreview(lines: List<String>): String = lines.joinToString(" ").take(160)
