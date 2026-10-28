@@ -32,7 +32,7 @@
   mark { background: #ffe9a8; }
   ul.todo { list-style: none; padding-left: 0; }
   ul.todo > li { display: flex; gap: 8px; align-items: flex-start; }
-  ul.todo > li > input { width: 18px; height: 18px; margin: 4px 0 0 0; flex: none; accent-color: #2f6bff; }
+  ul.todo > li > input { font-size: inherit; width: 1em; height: 1em; margin: 0.32em 0 0 0; flex: none; accent-color: #2f6bff; }
   ul.todo > li[data-done="1"] > .t { color: #9a9a9e; text-decoration: line-through; }
   #slash { position: fixed; left: 10px; right: 10px; bottom: 10px; display: none; background: #fff; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,.18); padding: 6px; z-index: 9; }
   #slash span { display: inline-block; margin: 3px; padding: 7px 12px; border-radius: 12px; font-size: 14px; background: #f4f4f6; }
@@ -269,6 +269,12 @@ function getMd() { return htmlToMd(); }
 var hist = [], at = -1, pending = 0;
 
 function snap() {
+  // 勾选状态是属性之外的，先写回属性，否则撤销一次就把勾抹了
+  var boxes = document.querySelectorAll('ul.todo input[type=checkbox]');
+  for (var b = 0; b < boxes.length; b++) {
+    if (boxes[b].checked) boxes[b].setAttribute('checked', '');
+    else boxes[b].removeAttribute('checked');
+  }
   var html = document.body.innerHTML;
   if (at >= 0 && hist[at] === html) return;
   hist = hist.slice(0, at + 1);
@@ -291,6 +297,11 @@ function undo() {
 function redo() {
   if (at < hist.length - 1) applySnap(hist[++at]);
 }
+
+// 顶栏的撤销/重做没有可走的历史时得灰掉
+function canUndo() { return at > 0 ? 1 : 0; }
+
+function canRedo() { return at < hist.length - 1 ? 1 : 0; }
 
 // 点工具栏时 WebView 已经失焦，选区得自己记着；失焦后选区会塌到 body，那种不算数
 var saved = null, lastBlk = null;
@@ -320,16 +331,66 @@ function see(el) {
   if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
 }
 
-function caretIn(el) {
+function caretAt(el, atStart) {
   var r = document.createRange();
   r.selectNodeContents(el);
-  r.collapse(false);
+  r.collapse(!!atStart);
   var s = window.getSelection();
   s.removeAllRanges();
   s.addRange(r);
   saved = r.cloneRange();
   see(el);
 }
+
+function caretIn(el) { caretAt(el, false); }
+
+function startOf(el, r) {
+  var pre = document.createRange();
+  pre.selectNodeContents(el);
+  pre.setEnd(r.startContainer, r.startOffset);
+  return pre.toString() === ''; // 复选框没有文字，算在行首里
+}
+
+// 列表的「•」「1.」是 CSS 画的、待办的框是 input，退格都删不掉；
+// 在行首按退格就把这一项拆回正文段落（标记和框一起消失）
+function lift(li) {
+  var p = document.createElement('p'), span = li.querySelector('span.t');
+  var kids = [].slice.call(span ? span.childNodes : li.childNodes);
+  for (var i = 0; i < kids.length; i++) {
+    var k = kids[i];
+    if (k.nodeType === 1 && /^(INPUT|UL|OL)$/.test(k.nodeName)) continue;
+    p.appendChild(k);
+  }
+  var list = li.parentNode, after = [], n;
+  for (n = li.nextSibling; n; n = n.nextSibling) after.push(n);
+  var tail = null;
+  if (after.length) {
+    // 后面的项另起一个同样的列表，插在段落后面，顺序不变
+    tail = document.createElement(list.nodeName.toLowerCase());
+    tail.className = list.className;
+    for (var j = 0; j < after.length; j++) tail.appendChild(after[j]);
+  }
+  var ref = list.nextSibling;
+  list.removeChild(li);
+  list.parentNode.insertBefore(p, ref);
+  if (tail) list.parentNode.insertBefore(tail, p.nextSibling);
+  if (!list.children.length) list.parentNode.removeChild(list);
+  caretAt(p, true);
+  return p;
+}
+
+document.body.addEventListener('keydown', function (e) {
+  if (e.key !== 'Backspace') return;
+  var s = window.getSelection();
+  if (!s.rangeCount || !s.isCollapsed) return;
+  var r = s.getRangeAt(0), n = r.startContainer;
+  var host = n.nodeType === 1 ? n : n.parentNode;
+  var li = host && host.closest ? host.closest('li') : null;
+  if (!li || !document.body.contains(li) || !startOf(li, r)) return;
+  e.preventDefault();
+  lift(li);
+  snap();
+});
 
 // WebView 失焦后 execCommand 一律失效，所以格式全走 DOM，不再指望浏览器
 function selBlock() {
@@ -676,10 +737,11 @@ function applySlash(kind) {
   saved = document.createRange();
   saved.selectNodeContents(blk);
   saved.collapse(false);
-  if (kind === 'hr') return insertHr();
-  if (kind === 'todo') return todo();
-  if (kind === 'ul') return list(false);
-  block(kind === 'quote' ? 'blockquote' : kind);
+  if (kind === 'hr') insertHr();
+  else if (kind === 'todo') todo();
+  else if (kind === 'ul') list(false);
+  else block(kind === 'quote' ? 'blockquote' : kind);
+  snap();
 }
 
 function align(dir) { return styleBlock('textAlign', dir); }

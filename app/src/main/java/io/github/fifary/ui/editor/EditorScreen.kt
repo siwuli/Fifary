@@ -132,6 +132,21 @@ fun EditorScreen(
     var recordFile by remember { mutableStateOf<File?>(null) }
     var recordStart by remember { mutableStateOf(0L) }
     var recordSec by remember { mutableStateOf(0) }
+    var canUndo by remember { mutableStateOf(false) }
+    var canRedo by remember { mutableStateOf(false) }
+
+    // 没历史可走的那一头，顶栏按钮得灰掉
+    LaunchedEffect(page) {
+        val view = page ?: return@LaunchedEffect
+        while (true) {
+            view.evaluateJavascript("canUndo() + ',' + canRedo()") { r ->
+                val pair = r.trim('"').split(",")
+                canUndo = pair.getOrNull(0) == "1"
+                canRedo = pair.getOrNull(1) == "1"
+            }
+            delay(400)
+        }
+    }
 
     // 录音时每秒刷新格子上的秒数：点了没任何变化，等于没反应
     LaunchedEffect(recorder) {
@@ -153,14 +168,15 @@ fun EditorScreen(
         page?.evaluateJavascript(code, null)
     }
 
-    // 格式按了得有个说法：JS 找不到要改的行就回 0，用提示顶上去，不然按钮看着像坏的
+    // 格式按了得有个说法：JS 找不到要改的行就回 0，用提示顶上去，不然按钮看着像坏的；
+    // 改完顺手留一版历史，连续点几次格式也都能撤销
     fun fmt(code: String) {
         val view = page
         if (view == null) {
             Toast.makeText(context, "编辑器还没准备好", Toast.LENGTH_SHORT).show()
             return
         }
-        view.evaluateJavascript(code) { r ->
+        view.evaluateJavascript("var _r = ($code); snap(); _r") { r ->
             if (r == "0") Toast.makeText(context, "先点一下要改的那一行", Toast.LENGTH_SHORT).show()
         }
         // 改的是 DOM，WebView 偶尔不自己重绘
@@ -218,12 +234,12 @@ fun EditorScreen(
             return
         }
         val path = "${Attach.DIR}/${file.name}"
-        js("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote("录音 $seconds 秒")})")
+        fmt("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote("录音 $seconds 秒")})")
     }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
-            Attach.copy(context, uri)?.let { path -> js("insertImage(${JSONObject.quote(path)})") }
+            Attach.copy(context, uri)?.let { path -> fmt("insertImage(${JSONObject.quote(path)})") }
         }
     }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -236,7 +252,7 @@ fun EditorScreen(
         val file = shot
         shot = null
         if (file == null) return@rememberLauncherForActivityResult
-        if (ok) js("insertImage(${JSONObject.quote("${Attach.DIR}/${file.name}")})") else file.delete()
+        if (ok) fmt("insertImage(${JSONObject.quote("${Attach.DIR}/${file.name}")})") else file.delete()
     }
 
     fun photograph() {
@@ -253,7 +269,7 @@ fun EditorScreen(
         if (uri != null) {
             val name = uri.lastPathSegment?.substringAfterLast('/') ?: "文件"
             Attach.copy(context, uri)?.let { path ->
-                js("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote(name)})")
+                fmt("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote(name)})")
             }
         }
     }
@@ -261,7 +277,7 @@ fun EditorScreen(
     // 参考 app 气泡里的麦克风是「语音输入」：说的话直接变成正文
     val talk = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!heard.isNullOrBlank()) js("insertText(${JSONObject.quote(heard)})")
+        if (!heard.isNullOrBlank()) fmt("insertText(${JSONObject.quote(heard)})")
     }
 
     fun dictate() {
@@ -298,10 +314,10 @@ fun EditorScreen(
             }
             Spacer(Modifier.weight(1f))
             // 参考顶栏：撤销 / 重做 / 完成
-            IconButton(onClick = { js("undo()") }) {
+            IconButton(onClick = { js("undo()") }, enabled = canUndo) {
                 Icon(Icons.Filled.Undo, contentDescription = "撤销")
             }
-            IconButton(onClick = { js("redo()") }) {
+            IconButton(onClick = { js("redo()") }, enabled = canRedo) {
                 Icon(Icons.Filled.Redo, contentDescription = "重做")
             }
             TextButton(onClick = { leave() }) {
@@ -391,7 +407,7 @@ fun EditorScreen(
                                 panel = Panel.FORMAT
                             }
                             if (typing) {
-                                BubbleIcon(Icons.Filled.Checklist, "待办") { js("todo()") }
+                                BubbleIcon(Icons.Filled.Checklist, "待办") { fmt("todo()") }
                                 BubbleIcon(Icons.Filled.Photo, "图片") {
                                     pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
@@ -512,7 +528,7 @@ fun EditorScreen(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                                     )
                                     "拍摄" -> photograph()
-                                    "表格" -> js("insertTable()")
+                                    "表格" -> fmt("insertTable()")
                                     "文件" -> pickFile.launch(arrayOf("*/*"))
                                 }
                             }
@@ -530,7 +546,7 @@ fun EditorScreen(
                                     } else {
                                         askMic.launch(android.Manifest.permission.RECORD_AUDIO)
                                     }
-                                    label == "分割线" -> js("insertHr()")
+                                    label == "分割线" -> fmt("insertHr()")
                                 }
                             }
                         }
