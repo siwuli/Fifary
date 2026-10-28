@@ -422,6 +422,24 @@ T('X1 勾选框字号跟行字号', '', function () {
   if (Math.abs(top - (1.65 - 1) / 2 * 24) > 1.5) bad('X1 勾选框竖直位置不对', 'top=' + top); else PASS++;
 }, null);
 
+// ===== Y 空着的一行列表/待办再回车就退出列表 =====
+T('Y1 空待办回车回正文', '<h1>aa</h1><ul class="todo"><li><input type="checkbox"><span class="t"><br></span></li></ul>', function () {
+  c2(document.querySelector('li .t')); key(document.body, 'Enter');
+  if (document.querySelector('ul,input')) bad('Y1 空待办回车还留在列表里', document.body.innerHTML); else PASS++;
+}, '# aa');
+T('Y2 空分条回车回正文', '<ul><li>aa</li><li><br></li></ul>', function () {
+  c2(document.querySelectorAll('li')[1]); key(document.body, 'Enter');
+  if (document.querySelectorAll('li').length !== 1) bad('Y2 空分条回车多出一项', document.body.innerHTML); else PASS++;
+}, '- aa');
+T('Y3 中间空项回车把列表拆两半', '<ul><li>aa</li><li><br></li><li>bb</li></ul>', function () {
+  c2(document.querySelectorAll('li')[1]); key(document.body, 'Enter');
+  var k = document.body.children;
+  if (k.length !== 3 || k[0].nodeName !== 'UL' || k[1].nodeName !== 'P' || k[2].nodeName !== 'UL')
+    bad('Y3 拆出来的顺序不对', document.body.innerHTML);
+  else if (k[0].querySelectorAll('li').length !== 1 || k[2].querySelectorAll('li').length !== 1)
+    bad('Y3 拆出来的项数不对', document.body.innerHTML);
+  else PASS++;
+}, null);
 
 document.title = 'PASS=' + PASS + ' FAIL=' + FAILS.length;
 var pre = document.createElement('pre');

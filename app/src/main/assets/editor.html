@@ -470,6 +470,24 @@ document.body.addEventListener('keydown', function (e) {
   snap();
 });
 
+// 空着的一行列表/待办再回车：这一项退出列表回正文（参考便签一样）。
+// 交给浏览器就只会一直加空项，列表永远出不来
+document.body.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  var s = window.getSelection();
+  if (!s.rangeCount) return;
+  var r = s.getRangeAt(0);
+  if (!r.collapsed) return;
+  var host = r.startContainer.nodeType === 3 ? r.startContainer.parentNode : r.startContainer;
+  var li = host.closest ? host.closest('li') : null;
+  if (!li || !document.body.contains(li)) return;
+  if (li.textContent.trim() || li.querySelector('img,hr,table,.player')) return;
+  e.preventDefault();
+  lift(li);
+  keepEmpty();
+  snap();
+});
+
 // 标题行末尾回车 → 下一行按正文来，不然一路都是大字（标题只是个块格式，这里只按标签判断）
 document.body.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter' || e.shiftKey) return;
