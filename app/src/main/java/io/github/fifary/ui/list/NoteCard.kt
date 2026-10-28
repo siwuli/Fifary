@@ -189,13 +189,17 @@ internal fun noteLines(body: String): List<String> =
         .filter { it.isNotEmpty() && it != "---" }
         .toList()
 
-// 标题就是正文第一行（参考便签就是这么存的）：填了标题用文件名，
-// 没填（无标题 / 无标题 N）就拿正文第一行的字顶上去，预览从后面接着
+// 笔记的名字就是正文第一行（参考便签没有单独的标题），预览从第二行接着
+internal fun titleOf(body: String): String = noteLines(body).firstOrNull().orEmpty()
+
 internal fun headingOf(note: Note): Pair<String, String> {
     val lines = noteLines(note.body)
-    if (!NotesStore.isUntitled(note.name)) return note.name to joinPreview(lines)
-    if (lines.isEmpty()) return note.name to ""
-    return lines.first() to joinPreview(lines.drop(1))
+    if (NotesStore.isUntitled(note.name)) {
+        if (lines.isEmpty()) return note.name to ""
+        return lines.first() to joinPreview(lines.drop(1))
+    }
+    val rest = if (lines.firstOrNull() == note.name) lines.drop(1) else lines
+    return note.name to joinPreview(rest)
 }
 
 private fun joinPreview(lines: List<String>): String = lines.joinToString(" ").take(160)

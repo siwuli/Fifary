@@ -17,7 +17,6 @@ import java.io.File
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun RichBody(
-    title: String,
     markdown: String,
     modifier: Modifier = Modifier,
     onReady: (WebView) -> Unit,
@@ -39,10 +38,7 @@ fun RichBody(
                 settings.useWideViewPort = false
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
-                        view.evaluateJavascript(
-                            "setDoc(${JSONObject.quote(title)}, ${JSONObject.quote(markdown)})",
-                            null,
-                        )
+                        view.evaluateJavascript("setMd(${JSONObject.quote(markdown)})", null)
                         onReady(view)
                     }
                 }

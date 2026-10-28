@@ -16,10 +16,6 @@
   }
   /* 行高显式给到每个块：光靠 body 的 font 简写，WebView 画光标时会用另一套行高，跟文字错开 */
   h1, h2, h3, p, blockquote, li, div, ul, ol { line-height: 1.65; }
-  /* 第一行就是标题（参考便签的正文第一行就是标题）：空着时给「标题」提示，
-     提示绝对定位，光标才不会被顶到提示文字后面 */
-  h1.tt { font-size: 26px; font-weight: 600; margin: 2px 0 10px; position: relative; }
-  h1.tt.ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: #b8b8bc; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
@@ -242,7 +238,6 @@ function htmlToMd() {
   var lines = [], kids = document.body.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
-    if (i === 0 && isTitle(el)) continue; // 标题单独存文件名，不写进正文
     if (!el || el.nodeName === 'INPUT' || el.nodeName === 'BR') continue;
     var tag = el.nodeName;
     if (tag === 'HR') { lines.push('---'); continue; }
@@ -277,24 +272,13 @@ function htmlToMd() {
   return lines.join('\n');
 }
 
-// 正文第一行就是标题：标题也在这个可编辑流里，删到底自然就删到标题这一行
-function setDoc(title, md) {
-  document.body.innerHTML = '<h1 class="tt"></h1>' + mdToHtml(md);
-  if (title) document.body.firstElementChild.textContent = title;
+function setMd(md) {
+  document.body.innerHTML = mdToHtml(md);
   syncTodos();
   keepEmpty();
   hist = [];
   at = -1;
   snap();
-}
-
-function setMd(md) { setDoc(getTitle(), md); }
-
-function isTitle(el) { return el && el.nodeName === 'H1' && el.className.indexOf('tt') >= 0; }
-
-function getTitle() {
-  var tt = document.body.firstElementChild;
-  return isTitle(tt) ? tt.textContent.trim() : '';
 }
 
 function getMd() { return htmlToMd(); }
@@ -432,20 +416,6 @@ document.body.addEventListener('keydown', function (e) {
 });
 
 // 标题是正文第一行，但按回车得进正文，不然再多出几行大字
-document.body.addEventListener('keydown', function (e) {
-  if (e.key !== 'Enter' || e.shiftKey) return;
-  var tt = document.body.firstElementChild;
-  if (!isTitle(tt)) return;
-  var s = window.getSelection();
-  if (!s.rangeCount || !tt.contains(s.getRangeAt(0).startContainer)) return;
-  e.preventDefault();
-  var p = document.createElement('p');
-  p.appendChild(document.createElement('br'));
-  tt.parentNode.insertBefore(p, tt.nextSibling);
-  caretAt(p, true);
-  snap();
-});
-
 // WebView 失焦后 execCommand 一律失效，所以格式全走 DOM，不再指望浏览器
 function selBlock() {
   var blk = blockOf(saved ? saved.startContainer : null);
@@ -530,10 +500,6 @@ function keepEmpty() {
   }
   // 整篇空的时候也得留着这一行：没有行盒光标就没地方站，点一下看着像没反应
   var first = document.body.firstElementChild;
-  if (first && isTitle(first)) {
-    if (first.textContent.trim()) first.classList.remove('ph');
-    else first.classList.add('ph');
-  }
   if (first || document.body.childNodes.length) return;
   var p = document.createElement('p');
   p.appendChild(document.createElement('br'));
@@ -583,7 +549,6 @@ function unwrapAll(blk, tag) {
 }
 
 function setTag(blk, tag) {
-  if (isTitle(blk)) return blk; // 标题换个块标签就不是标题了，不动它
   var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
   if (blk.nodeName === want) return blk;
   if (blk.nodeName === 'LI') { // 列表项先拆成段落，再换标签，位置才不会跑到整张列表后面
@@ -719,7 +684,6 @@ function sizeInto(el, from) {
 }
 
 function toList(blk, ordered) {
-  if (isTitle(blk)) return blk;
   var want = ordered ? 'OL' : 'UL';
   if (blk.nodeName === 'LI') {
     var host = blk.parentNode;
@@ -765,7 +729,6 @@ function syncTodos() {
 }
 
 function toTodo(blk) {
-  if (isTitle(blk)) return blk;
   if (blk.nodeName === 'LI') {
     var ul = blk.parentNode;
     if (ul.classList.contains('todo')) return lift(blk); // 再点一次取消，这一行的缩进/对齐跟着走

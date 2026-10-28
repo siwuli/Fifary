@@ -96,8 +96,8 @@ import androidx.core.content.FileProvider
 import io.github.fifary.data.Attach
 import io.github.fifary.data.Note
 import io.github.fifary.data.NotesStore
+import io.github.fifary.ui.list.titleOf
 import io.github.fifary.ui.theme.Space
-import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import kotlinx.coroutines.delay
@@ -121,8 +121,6 @@ fun EditorScreen(
 ) {
     val context = LocalContext.current
     val initial = remember(note?.path) { note?.body.orEmpty() }
-    // 无标题的笔记进编辑器时标题栏留空（显示「标题」提示），填了标题才用文件名
-    val initialTitle = remember(note?.path) { note?.name.orEmpty().takeUnless { NotesStore.isUntitled(it) }.orEmpty() }
     var panel by remember { mutableStateOf(Panel.NONE) }
     var page by remember { mutableStateOf<WebView?>(null) }
 
@@ -194,19 +192,17 @@ fun EditorScreen(
             onDiscard()
             return
         }
-        // 标题也在正文里（第一行），一次取回来，省得两条异步各取各的。
-        // evaluateJavascript 会把返回值再包一层 JSON 字符串，所以这里要解两次；
-        // 解不出来就留在编辑器别存，免得把笔记存成空的
-        view.evaluateJavascript("JSON.stringify([getTitle(), getMd()])") { json ->
-            val inner = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
-            val arr = inner?.let { runCatching { JSONTokener(it).nextValue() as JSONArray }.getOrNull() }
-            if (arr == null) {
+        // 笔记的名字就是正文第一行（参考便签没有单独的标题框）。
+        // 已经起过名的沿用原名，不然一存就把用户的文件改名了
+        view.evaluateJavascript("getMd()") { json ->
+            val md = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
+            if (md == null) {
                 Toast.makeText(context, "没能取出正文，再点一次完成", Toast.LENGTH_SHORT).show()
                 return@evaluateJavascript
             }
-            val t = arr.optString(0).orEmpty()
-            val md = arr.optString(1).orEmpty()
-            if (note == null && t.isBlank() && md.isBlank()) onDiscard() else onSave(t, md)
+            val old = note?.name.orEmpty()
+            val name = if (NotesStore.isUntitled(old)) titleOf(md) else old
+            if (note == null && md.isBlank()) onDiscard() else onSave(name, md)
         }
     }
 
@@ -353,7 +349,6 @@ fun EditorScreen(
         )
 
         RichBody(
-            title = initialTitle,
             markdown = initial,
             modifier = Modifier
                 .fillMaxWidth()
