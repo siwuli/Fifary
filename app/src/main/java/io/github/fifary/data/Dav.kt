@@ -88,7 +88,7 @@ object Dav {
                 put(base + encodePath(rel), file)
                 up++
             } else if (mode != Mode.UPLOAD && hit != null && hit.time > stamp + 2000) {
-                get(hit.url, file)
+                get(hit.url, file, hit.time)
                 down++
             }
         }
@@ -98,7 +98,7 @@ object Dav {
                 if (rel in localFiles) continue
                 val target = File(local, rel)
                 target.parentFile?.mkdirs()
-                get(item.url, target)
+                get(item.url, target, item.time)
                 down++
             }
         }
@@ -187,7 +187,8 @@ object Dav {
         file.setLastModified(System.currentTimeMillis())
     }
 
-    private fun get(url: String, file: File) {
+    // 下完把 mtime 对齐成远端那份的修改时间：给成「现在」的话，所有笔记一同步就全变成刚刚
+    private fun get(url: String, file: File, stamp: Long) {
         call(url, "GET", null).use { response ->
             if (!response.isSuccessful) error("下载失败 HTTP ${response.code}")
             val body = response.body ?: error("下载失败：没有内容")
@@ -198,7 +199,7 @@ object Dav {
                 file.delete()
                 tmp.renameTo(file)
             }
-            file.setLastModified(System.currentTimeMillis())
+            file.setLastModified(if (stamp > 0L) stamp else System.currentTimeMillis())
         }
     }
 

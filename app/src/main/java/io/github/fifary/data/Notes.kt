@@ -32,6 +32,7 @@ data class FolderEntry(
 
 object NotesStore {
 
+    // 「默认」是虚拟分组：没有同名目录，就是 vault 根上的那些笔记
     const val DEFAULT = "默认"
 
     // 两个虚拟分组：不是真目录，所以不能建同名分组
@@ -48,7 +49,7 @@ object NotesStore {
     // 第一次装、vault 还不存在时灌一篇介绍；之后盘上有什么就显示什么
     private val seed: List<Note> = listOf(
         Note(
-            path = "$DEFAULT/欢迎使用 Fifary.md",
+            path = "欢迎使用 Fifary.md",
             body = "Fifary 是一个纯本地 Markdown 笔记 App。\n\n" +
                 "- 笔记就是 .md 文件，目录就是分组，不存数据库\n" +
                 "- 不配置任何服务器也能完整使用，没有账号体系\n" +
@@ -110,7 +111,7 @@ object NotesStore {
 
         if (existing == null) {
             val secret = folder == PRIVATE && key != null
-            val target = if (folder.isEmpty() || folder == PRIVATE || folder == TRASH) DEFAULT else folder
+            val target = if (folder.isEmpty() || folder == PRIVATE || folder == TRASH) "" else folder
             val fresh = uniquePath(target, name, null)
             val note = Note(
                 path = fresh,
@@ -164,11 +165,15 @@ object NotesStore {
     }
 
     // 列表用哪一屏：私密只出私密，最近删除只出删除的
+    // 直接在 vault 根上的笔记也算「默认」分组：App 里没有比它更合适的地方，不然只有「全部」看得到
     fun notesFor(folder: String): List<Note> = when (folder) {
         TRASH -> all.filter { it.deletedAt > 0L }
         PRIVATE -> all.filter { it.secret && it.deletedAt == 0L }
         "" -> all.filter { it.deletedAt == 0L && !it.secret }
-        else -> all.filter { it.folder == folder && it.deletedAt == 0L && !it.secret }
+        else -> all.filter {
+            (it.folder == folder || (folder == DEFAULT && it.folder.isEmpty())) &&
+                it.deletedAt == 0L && !it.secret
+        }
     }
 
     fun countIn(folder: String): Int = notesFor(folder).size
@@ -192,7 +197,7 @@ object NotesStore {
     fun createFolder(name: String): Boolean {
         val clean = name.trim()
         if (clean.isEmpty() || clean.contains('/')) return false
-        if (clean == TRASH || clean == PRIVATE) return false
+        if (clean == TRASH || clean == PRIVATE || clean == DEFAULT) return false
         if (folders().any { it.path == clean }) return false
         emptyFolders.add(clean)
         Vault.makeFolder(clean)
@@ -202,7 +207,7 @@ object NotesStore {
     fun renameFolder(from: String, to: String): Boolean {
         val clean = to.trim()
         if (clean.isEmpty() || clean.contains('/') || clean == from) return false
-        if (clean == TRASH || clean == PRIVATE) return false
+        if (clean == TRASH || clean == PRIVATE || clean == DEFAULT) return false
         if (folders().any { it.path == clean }) return false
         all.replaceAll { note ->
             if (note.folder == from) note.copy(path = "$clean/${note.name}.md") else note
@@ -249,17 +254,12 @@ object NotesStore {
         dead.forEach(Vault::remove)
     }
 
-    // 移动 = 改路径（分类即目录），盘上就是重命名文件
+    // 移动 = 改路径（分类即目录），盘上就是重命名文件；移到「默认」= 挪回 vault 根
     fun move(paths: Set<String>, folder: String) {
-        val target = if (folder.isEmpty()) DEFAULT else folder
+        val target = if (folder == DEFAULT) "" else folder
         val hit = expand(paths).filter { it.deletedAt == 0L }
         for (note in hit) {
-            var path = "$target/${note.name}.md"
-            var index = 2
-            while (all.any { it.path == path && it.path != note.path }) {
-                path = "$target/${note.name} $index.md"
-                index++
-            }
+            val path = uniquePath(target, note.name, note.path)
             val at = all.indexOfFirst { it.path == note.path }
             if (at >= 0) {
                 Vault.move(note.path, path)
