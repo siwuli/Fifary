@@ -40,15 +40,13 @@ fun CircleButton(
     subtle: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
+    Bubble(
         shape = CircleShape,
-        color = if (subtle) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = if (subtle) Color.Transparent else MaterialTheme.colorScheme.surface,
+        elevation = if (subtle) 0.dp else Elev.bubble,
         modifier = modifier.size(Size.touch),
-    ) {
-        Box(contentAlignment = Alignment.Center) { content() }
-    }
+        onClick = onClick,
+    ) { content() }
 }
 
 @Composable
@@ -58,7 +56,7 @@ fun CircleIconButton(icon: ImageVector, label: String, onClick: () -> Unit, subt
     }
 }
 
-// 胶囊：选中白底+轻阴影，未选中浅灰底
+// 胶囊：选中白底+阴影，未选中浅灰底——都做成气泡，不然一排就是一片贴纸
 @Composable
 fun Capsule(
     selected: Boolean,
@@ -66,13 +64,12 @@ fun Capsule(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
+    Bubble(
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        shadowElevation = if (selected) Elev.chip else 0.dp,
+        elevation = if (selected) Elev.bubble else Elev.chip,
         modifier = modifier.height(Size.chipHeight),
+        onClick = onClick,
     ) {
         Row(
             Modifier.padding(horizontal = 12.dp),
@@ -84,11 +81,11 @@ fun Capsule(
 
 @Composable
 fun TextPill(text: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
+    Bubble(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
+        elevation = Elev.bubble,
         modifier = Modifier.height(Size.chipHeight),
+        onClick = onClick,
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, style = MaterialTheme.typography.titleMedium)

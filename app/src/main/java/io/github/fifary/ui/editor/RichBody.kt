@@ -2,10 +2,16 @@ package io.github.fifary.ui.editor
 
 import android.annotation.SuppressLint
 import android.graphics.Color
+import android.os.Build
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -18,12 +24,20 @@ import java.io.File
 @Composable
 fun RichBody(
     markdown: String,
+    dark: Boolean,
     modifier: Modifier = Modifier,
     onReady: (WebView) -> Unit,
 ) {
     val context = LocalContext.current
     val html = remember { context.assets.open("editor.html").bufferedReader().use { it.readText() } }
     val base = remember { "file://" + File(context.filesDir, "vault").absolutePath + "/" }
+    val theme = if (dark) "dark" else "light"
+    var page by remember { mutableStateOf<WebView?>(null) }
+
+    // 深浅色由我们的设置决定，不让 WebView 自己再反色一遍，否则正文会黑底黑字
+    LaunchedEffect(page, theme) {
+        page?.evaluateJavascript("document.documentElement.dataset.theme='$theme'", null)
+    }
 
     AndroidView(
         modifier = modifier,
@@ -36,8 +50,16 @@ fun RichBody(
                 settings.allowUniversalAccessFromFileURLs = true
                 settings.loadWithOverviewMode = false
                 settings.useWideViewPort = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    settings.isAlgorithmicDarkeningAllowed = false
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    @Suppress("DEPRECATION")
+                    settings.forceDark = WebSettings.FORCE_DARK_OFF
+                }
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
+                        page = view
+                        view.evaluateJavascript("document.documentElement.dataset.theme='$theme'", null)
                         view.evaluateJavascript("setMd(${JSONObject.quote(markdown)})", null)
                         onReady(view)
                     }

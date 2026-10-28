@@ -31,4 +31,6 @@ object Size {
 object Elev {
     val floating = 8.dp
     val chip = 2.dp
+    // 气泡的软投影：比卡片的投影散、大一号
+    val bubble = 10.dp
 }

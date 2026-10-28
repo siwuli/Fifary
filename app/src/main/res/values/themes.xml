@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 父主题保持 Light：WebView 的算法暗化会按它判断，我们自己按设置画深色，
+         让它再去反一次色就会黑底黑字 -->
+    <style name="Theme.Fifary" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
+    </style>
+</resources>

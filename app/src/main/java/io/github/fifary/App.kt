@@ -80,7 +80,7 @@ fun FifaryApp() {
                         // 切分组替换根页面，不堆栈：返回键始终是"退出"
                         onSelectCategory = { path -> navigator.toRoot(Screen.Notes(path)) },
                         onOpenNote = { note -> navigator.open(Screen.Editor(note.path)) },
-                        onCreate = { navigator.open(Screen.Editor("", folder)) },
+                        onCreate = { navigator.open(Screen.Editor("", folder), fromBubble = true) },
                         onMove = { paths, target -> NotesStore.move(paths, target) },
                         onDelete = { paths -> NotesStore.delete(paths) },
                         onRestore = { paths -> NotesStore.restore(paths) },

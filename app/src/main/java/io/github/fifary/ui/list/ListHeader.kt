@@ -61,6 +61,7 @@ import io.github.fifary.data.FolderEntry
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.SortMode
 import io.github.fifary.data.ViewMode
+import io.github.fifary.ui.components.Bubble
 import io.github.fifary.ui.components.Capsule
 import io.github.fifary.ui.components.CircleIconButton
 import io.github.fifary.ui.components.NotebookGlyph
@@ -292,11 +293,10 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, onClose:
         focus.requestFocus()
         keyboard?.show()
     }
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
+    Bubble(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = Elev.chip,
+        elevation = Elev.bubble,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(start = Space.l, end = Space.s, top = 14.dp, bottom = 14.dp),
@@ -355,15 +355,12 @@ private fun CategoryRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 左边这个方块按钮 = 进入分组管理页（不是切视图）
-        Surface(
-            onClick = { onOpenCategories() },
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = Elev.chip,
+        Bubble(
+            shape = RoundedCornerShape(12.dp),
+            elevation = Elev.bubble,
             modifier = Modifier.size(Size.categoryButton),
-        ) {
-            Box(contentAlignment = Alignment.Center) { LayersGlyph() }
-        }
+            onClick = onOpenCategories,
+        ) { LayersGlyph() }
         Capsule(selected = folder.isEmpty(), onClick = { onSelectCategory("") }) {
             Text("全部", style = MaterialTheme.typography.titleMedium)
         }

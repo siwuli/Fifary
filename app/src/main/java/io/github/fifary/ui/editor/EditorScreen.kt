@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -66,10 +67,8 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -81,7 +80,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -100,7 +98,11 @@ import androidx.core.content.FileProvider
 import io.github.fifary.data.Attach
 import io.github.fifary.data.Note
 import io.github.fifary.data.NotesStore
+import io.github.fifary.ui.components.Bubble
+import io.github.fifary.ui.components.bubble
 import io.github.fifary.ui.list.titleOf
+import io.github.fifary.ui.theme.Elev
+import io.github.fifary.ui.theme.LocalDarkTheme
 import io.github.fifary.ui.theme.Space
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -344,26 +346,28 @@ fun EditorScreen(
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(52.dp)
-                .padding(horizontal = Space.xxs),
+                .height(56.dp)
+                .padding(horizontal = Space.s),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
-            IconButton(onClick = { leave() }) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
-            }
+            TopBubble(Icons.Filled.ArrowBack, "返回") { leave() }
             Spacer(Modifier.weight(1f))
             // 参考顶栏：撤销 / 重做 / 完成
-            IconButton(onClick = { js("undo()") }, enabled = canUndo) {
-                Icon(Icons.Filled.Undo, contentDescription = "撤销")
-            }
-            IconButton(onClick = { js("redo()") }, enabled = canRedo) {
-                Icon(Icons.Filled.Redo, contentDescription = "重做")
-            }
-            TextButton(onClick = { leave() }) {
+            TopBubble(Icons.Filled.Undo, "撤销", enabled = canUndo) { js("undo()") }
+            TopBubble(Icons.Filled.Redo, "重做", enabled = canRedo) { js("redo()") }
+            Bubble(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                elevation = Elev.bubble,
+                modifier = Modifier.height(38.dp),
+                onClick = { leave() },
+            ) {
                 Text(
                     text = "完成",
                     style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(horizontal = Space.m),
                 )
             }
         }
@@ -378,6 +382,7 @@ fun EditorScreen(
 
         RichBody(
             markdown = initial,
+            dark = LocalDarkTheme.current,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -394,9 +399,7 @@ fun EditorScreen(
                 Modifier
                     // 平时是居中的小胶囊，点开面板才铺满整宽（参考同样是底部整宽面板）
                     .then(if (panel == Panel.NONE) Modifier.wrapContentWidth() else Modifier.fillMaxWidth())
-                    .shadow(8.dp, RoundedCornerShape(32.dp))
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(MaterialTheme.colorScheme.surface)
+                    .bubble(RoundedCornerShape(32.dp), MaterialTheme.colorScheme.surfaceVariant)
                     .animateContentSize(spring(dampingRatio = 0.78f, stiffness = 460f)),
             ) {
                 Crossfade(targetState = panel, animationSpec = tween(180), label = "bubble") { current ->
@@ -588,6 +591,25 @@ private fun ExtraRow(items: List<Pair<String, ImageVector>>, activeIndex: Int = 
         }
         // 参考是等宽的 70dp 格子：不满一行时补空位，不让剩下的格子被拉宽
         repeat(4 - items.size) { Spacer(Modifier.weight(1f)) }
+    }
+}
+
+@Composable
+private fun TopBubble(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Bubble(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        elevation = Elev.bubble,
+        modifier = Modifier.size(38.dp),
+        enabled = enabled,
+        onClick = onClick,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

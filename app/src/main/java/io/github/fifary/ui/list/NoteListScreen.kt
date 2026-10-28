@@ -61,6 +61,7 @@ import io.github.fifary.data.ViewMode
 import io.github.fifary.ui.components.AccentDot
 import io.github.fifary.ui.components.BarAction
 import io.github.fifary.ui.components.BouncingBox
+import io.github.fifary.ui.components.Bubble
 import io.github.fifary.ui.components.ConfirmDialog
 import io.github.fifary.ui.components.FloatingActionBar
 import io.github.fifary.ui.components.NotebookGlyph
@@ -565,17 +566,19 @@ private fun MoveDialog(
 
 @Composable
 private fun FloatingNewButton(onCreate: () -> Unit) {
-    Surface(
-        onClick = onCreate,
+    Bubble(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        shadowElevation = Elev.floating,
+        elevation = 14.dp,
         modifier = Modifier.size(58.dp),
+        onClick = onCreate,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Add, contentDescription = "新建笔记", modifier = Modifier.size(26.dp))
-        }
+        Icon(
+            Icons.Filled.Add,
+            contentDescription = "新建笔记",
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(26.dp),
+        )
     }
 }
 

@@ -13,6 +13,8 @@ object Motion {
     val PageSpring = spring<Float>(dampingRatio = 0.90f, stiffness = 380f)
     // 顶栏返回：比手势手感更快一点，收尾不拖泥带水
     val BackSpring = spring<Float>(dampingRatio = 0.95f, stiffness = 620f)
+    // 「+」气泡长成整页：起飞快、收尾稳，别弹过头
+    val BubbleSpring = spring<Float>(dampingRatio = 0.86f, stiffness = 420f)
     val FaidSpring = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
 
     const val D_PAGE_IN = 300

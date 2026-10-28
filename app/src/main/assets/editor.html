@@ -3,13 +3,25 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>
+  /* 深浅色只认 App 里设的主题（RichBody 往 html 上写 data-theme），
+     别让 WebView 再自作主张反色，不然黑底黑字谁也看不清 */
+  :root {
+    --fg: #1b1b1f; --ph: rgba(0, 0, 0, .3); --muted: #666; --line: #e2e2e6;
+    --code-bg: #f2f2f4; --player-bg: #f4f4f6; --player-bar: #dcdce2;
+    --quote: #d9c07a; --mark: #ffe9a8; --accent: #2f6bff;
+  }
+  html[data-theme="dark"] {
+    --fg: #e9eaec; --ph: rgba(255, 255, 255, .32); --muted: #a4a8b0; --line: #2e3136;
+    --code-bg: #24272b; --player-bg: #24272b; --player-bar: #3a3d43;
+    --quote: #c9ad6a; --mark: #5a4a1e; --accent: #7aa7ff;
+  }
   html, body { margin: 0; padding: 0; }
   body {
     padding: 4px 20px 120px 20px;
     font-family: -apple-system, "Noto Sans CJK SC", Roboto, sans-serif;
     font-size: 16px;
     line-height: 1.65;
-    color: #1b1b1f;
+    color: var(--fg);
     -webkit-user-select: text;
     outline: none;
     word-break: break-word;
@@ -19,31 +31,31 @@
   /* 第一行就是标题位：空着就给灰提示（参考便签的占位色 rgba(0,0,0,.3)、不带粗体），
      提示绝对定位，光标才不会被顶到提示文字后面 */
   body > .ph { position: relative; }
-  body > .ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: rgba(0, 0, 0, .3); font-weight: 400; }
+  body > .ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: var(--ph); font-weight: 400; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
   p { margin: 6px 0; }
-  blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid #d9c07a; color: #666; font-size: 14px; }
-  code { font-family: monospace; background: #f2f2f4; padding: 1px 4px; border-radius: 4px; }
+  blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--quote); color: var(--muted); font-size: 14px; }
+  code { font-family: monospace; background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
   img { max-width: 100%; border-radius: 12px; margin: 8px 0; }
-  hr { border: none; border-top: 1px solid #e2e2e6; margin: 14px 0; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
   ul, ol { margin: 6px 0; padding-left: 24px; }
   li { margin: 2px 0; }
-  a { color: #2f6bff; }
-  .player { display: inline-flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 8px 12px; background: #f4f4f6; border-radius: 14px; vertical-align: middle; -webkit-user-select: none; user-select: none; }
-  .player .pp { flex: none; width: 32px; height: 32px; line-height: 32px; text-align: center; border-radius: 50%; background: #2f6bff; color: #fff; font-size: 13px; }
-  .player .bar { flex: 1; height: 4px; border-radius: 2px; background: #dcdce2; overflow: hidden; }
-  .player .fill { display: block; height: 100%; width: 0; background: #2f6bff; }
-  .player .t { flex: none; font-size: 12px; color: #666; font-variant-numeric: tabular-nums; }
-  mark { background: #ffe9a8; }
+  a { color: var(--accent); }
+  .player { display: inline-flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 8px 12px; background: var(--player-bg); border-radius: 14px; vertical-align: middle; -webkit-user-select: none; user-select: none; }
+  .player .pp { flex: none; width: 32px; height: 32px; line-height: 32px; text-align: center; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; }
+  .player .bar { flex: 1; height: 4px; border-radius: 2px; background: var(--player-bar); overflow: hidden; }
+  .player .fill { display: block; height: 100%; width: 0; background: var(--accent); }
+  .player .t { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  mark { background: var(--mark); }
   ul.todo { list-style: none; padding-left: 0; }
   /* 勾选框绝对定位、正文按普通行排：flex 里空的 .t 会塌成 0 宽，光标被画到行首（框左边）。
      em 要跟着这一行的字号走（标题大小的待办，框和位置一起放大），所以宽高和 top 都用 em，
      并且 input 得显式 inherit 字号——表单控件默认不继承，框会一直卡在正文尺寸上 */
   ul.todo > li { position: relative; padding-left: 1.625em; }
-  ul.todo > li > input { position: absolute; left: 0; top: 0.325em; width: 1em; height: 1em; margin: 0; font-size: inherit; accent-color: #2f6bff; }
-  ul.todo > li[data-done="1"] > .t { color: #9a9a9e; text-decoration: line-through; }
+  ul.todo > li > input { position: absolute; left: 0; top: 0.325em; width: 1em; height: 1em; margin: 0; font-size: inherit; accent-color: var(--accent); }
+  ul.todo > li[data-done="1"] > .t { color: var(--muted); text-decoration: line-through; }
 </style>
 </head>
 <body contenteditable="true" spellcheck="false"></body>
