@@ -16,9 +16,10 @@
   }
   /* 行高显式给到每个块：光靠 body 的 font 简写，WebView 画光标时会用另一套行高，跟文字错开 */
   h1, h2, h3, p, blockquote, li, div, ul, ol { line-height: 1.65; }
-  /* 空笔记的第一行是标题位：给个灰提示，提示绝对定位，光标才不会被顶到提示文字后面 */
+  /* 第一行就是标题位：空着就给灰提示（参考便签的占位色 rgba(0,0,0,.3)、不带粗体），
+     提示绝对定位，光标才不会被顶到提示文字后面 */
   body > .ph { position: relative; }
-  body > .ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: #b8b8bc; font-weight: 600; }
+  body > .ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: rgba(0, 0, 0, .3); font-weight: 400; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
@@ -531,13 +532,12 @@ function keepEmpty() {
     document.body.appendChild(h);
     document.body.appendChild(p);
   }
-  // 提示只给整篇都空的第一行；一有内容就摘掉
+  // 第一行就是标题位：只要它空着就留着灰提示，正文有字也一样（参考便签的标题块空着就显示占位）
   var ph = document.querySelector('.ph');
   if (ph) ph.classList.remove('ph');
   var head = document.body.firstElementChild;
-  if (!head) return;
-  if (document.body.textContent.trim()) return;
-  if (document.body.querySelector('img,hr,table,input,.player')) return;
+  if (!head || head.nodeName !== 'H1' || head.textContent.trim()) return;
+  if (head.querySelector('img,hr,table,input,.player')) return;
   head.classList.add('ph');
 }
 
