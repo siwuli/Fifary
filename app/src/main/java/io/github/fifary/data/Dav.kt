@@ -15,15 +15,20 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.net.URL
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-// 只认标准 WebDAV：PROPFIND 列目录 / PUT 上传 / GET 下载 / MKCOL 建目录。
-// 冲突策略是「谁的最后修改时间新听谁的」，不删远端也不删本地 —— 宁可多两份，不吞数据
+// 只认标准 WebDAV：PROPFIND 列目录 / PUT 上传 / GET 下载 / MKCOL 建目录 / DELETE 删文件。
+// 冲突策略：谁的最后修改时间新听谁的，两边都改过又不一样就把旧的那份另存成「(冲突 时间)」，
+// 不丢任何一边的内容。删除靠本地记的一份索引传播：上次同步时两边都有的文件，
+// 这次只有一边没了、另一边没动，就是那一边删的 —— 跟着删，而不是又拉回来。
 object Dav {
 
     enum class Mode { UPLOAD, DOWNLOAD, BOTH }
@@ -46,8 +51,12 @@ object Dav {
         scope.launch {
             val outcome = runCatching { sync(app, mode) }
             message = outcome.fold(
-                onSuccess = { (up, down) ->
-                    if (up + down == 0) "已是最新" else "上传 $up · 下载 $down"
+                onSuccess = { (up, down, gone) ->
+                    if (up + down + gone == 0) {
+                        "已是最新"
+                    } else {
+                        "上传 $up · 下载 $down" + if (gone > 0) " · 删除 $gone" else ""
+                    }
                 },
                 onFailure = { "同步失败：${it.message ?: "网络错误"}" },
             )
@@ -61,48 +70,164 @@ object Dav {
         if (SettingsStore.davAuto && configured) start(context, Mode.BOTH)
     }
 
-    private data class Item(val url: String, val time: Long)
+    private data class Item(val url: String, val time: Long, val size: Long)
 
-    private fun sync(context: Context, mode: Mode): Pair<Int, Int> {
+    // 上次同步完某一刻两边各是什么样。有它才能分辨「这边刚改了」和「那边删了」
+    private data class Mark(val lm: Long, val ls: Long, val rm: Long, val rs: Long) {
+        fun localChanged(file: File): Boolean = lm != file.lastModified() || ls != file.length()
+        // 服务器不报 content-length 时 size 是 0，只比时间，不然每轮都被当成远端改过
+        fun remoteChanged(item: Item): Boolean =
+            rm != item.time || (rs > 0 && item.size > 0 && rs != item.size)
+    }
+
+    private var marks: MutableMap<String, Mark> = HashMap()
+
+    private fun sync(context: Context, mode: Mode): Triple<Int, Int, Int> {
         val base = base()
         val local = Storage.root(context)
         var up = 0
         var down = 0
+        var gone = 0
+        loadMarks(context, base)
 
         mkcol(base)
         val remote = list(base, 0)
-        val localFiles = local.walkTopDown()
+        val files = local.walkTopDown()
             .filter { it.isFile && it.extension != "tmp" }
             .associateBy { it.relativeTo(local).invariantSeparatorsPath }
 
         // 远端缺的目录先建出来，不然 PUT 到不存在的目录会 409
-        localFiles.keys.mapNotNull { it.substringBeforeLast('/', "").ifEmpty { null } }
+        files.keys.mapNotNull { it.substringBeforeLast('/', "").ifEmpty { null } }
             .distinct()
             .forEach { mkcol(base + encodePath(it) + "/") }
 
-        for ((rel, file) in localFiles) {
-            val hit = remote[rel]
-            val stamp = file.lastModified()
-            val newer = hit == null || stamp > hit.time + 2000
-            if (mode != Mode.DOWNLOAD && newer) {
-                put(base + encodePath(rel), file)
-                up++
-            } else if (mode != Mode.UPLOAD && hit != null && hit.time > stamp + 2000) {
-                get(hit.url, file, hit.time)
-                down++
+        // 单向模式只负责推/拉，不对冲突留副本；删除两边都传播（索引能证明是删不是改）
+        for (rel in files.keys + remote.keys + marks.keys) {
+            val file = files[rel]
+            val item = remote[rel]
+            val mark = marks[rel]
+            when {
+                file != null && item != null -> {
+                    val localMoved = mark == null || mark.localChanged(file)
+                    val remoteMoved = mark == null || mark.remoteChanged(item)
+                    when {
+                        !localMoved && !remoteMoved -> {}
+                        localMoved && !remoteMoved -> if (mode != Mode.DOWNLOAD) {
+                            put(base + encodePath(rel), file)
+                            up++
+                        }
+                        !localMoved && remoteMoved -> if (mode != Mode.UPLOAD) {
+                            get(item.url, file, item.time)
+                            down++
+                        }
+                        mode != Mode.BOTH -> {
+                            // 单向模式不做冲突副本：本地的改动往上传，或者按远端覆盖下来
+                            if (mode == Mode.UPLOAD) {
+                                put(base + encodePath(rel), file)
+                                up++
+                            } else {
+                                get(item.url, file, item.time)
+                                down++
+                            }
+                        }
+                        // 两边都动过：大小一样就是同一份内容（多半只是时间差），取新的；不一样才留副本
+                        item.size == file.length() && item.size > 0 -> {
+                            if (file.lastModified() > item.time) {
+                                put(base + encodePath(rel), file)
+                                up++
+                            } else {
+                                get(item.url, file, item.time)
+                                down++
+                            }
+                        }
+                        file.lastModified() > item.time -> {
+                            get(item.url, conflictOf(file), item.time)
+                            put(base + encodePath(rel), file)
+                            up++
+                            down++
+                        }
+                        else -> {
+                            file.copyTo(conflictOf(file), overwrite = true)
+                            get(item.url, file, item.time)
+                            down++
+                        }
+                    }
+                }
+                // 只在本地：上次两边都有、本地没动过 → 远端那份被删了，跟着删；否则就是新笔记，传上去
+                file != null -> {
+                    if (mark != null && !mark.localChanged(file)) {
+                        if (file.delete()) gone++
+                    } else if (mode != Mode.DOWNLOAD) {
+                        put(base + encodePath(rel), file)
+                        up++
+                    }
+                }
+                // 只在远端：上次两边都有、远端没动过 → 本地删的，远端也删；否则是别处新加的，拉下来
+                item != null -> {
+                    if (mark != null && !mark.remoteChanged(item)) {
+                        remove(item.url)
+                        gone++
+                    } else if (mode != Mode.UPLOAD) {
+                        val target = File(local, rel)
+                        target.parentFile?.mkdirs()
+                        get(item.url, target, item.time)
+                        down++
+                    }
+                }
             }
         }
 
-        if (mode != Mode.UPLOAD) {
-            for ((rel, item) in remote) {
-                if (rel in localFiles) continue
-                val target = File(local, rel)
-                target.parentFile?.mkdirs()
-                get(item.url, target, item.time)
-                down++
+        rebuildMarks(context, base, local)
+        return Triple(up, down, gone)
+    }
+
+    // ---- 同步索引：只存两边都有的文件，删掉的自然就不在了 ----
+
+    private fun indexFile(context: Context) = File(context.filesDir, "sync-state.json")
+
+    private fun loadMarks(context: Context, base: String) {
+        marks = HashMap()
+        val text = runCatching { indexFile(context).readText() }.getOrNull() ?: return
+        runCatching {
+            val one = JSONObject(text).optJSONObject(base) ?: return
+            for (rel in one.keys()) {
+                val a = one.getJSONArray(rel)
+                marks[rel] = Mark(a.getLong(0), a.getLong(1), a.getLong(2), a.getLong(3))
             }
         }
-        return up to down
+    }
+
+    private fun rebuildMarks(context: Context, base: String, local: File) {
+        val remote = runCatching { list(base, 0) }.getOrElse { return }
+        val fresh = HashMap<String, Mark>()
+        local.walkTopDown().filter { it.isFile && it.extension != "tmp" }.forEach { file ->
+            val rel = file.relativeTo(local).invariantSeparatorsPath
+            val item = remote[rel] ?: return@forEach
+            fresh[rel] = Mark(file.lastModified(), file.length(), item.time, item.size)
+        }
+        marks = fresh
+        runCatching {
+            val file = indexFile(context)
+            // 换过服务器也要留着别的账号的索引，不然切回来一次全当新文件
+            val root = JSONObject(runCatching { file.readText() }.getOrDefault("{}"))
+            val one = JSONObject()
+            marks.forEach { (rel, m) -> one.put(rel, JSONArray().put(m.lm).put(m.ls).put(m.rm).put(m.rs)) }
+            root.put(base, one)
+            file.writeText(root.toString())
+        }
+    }
+
+    // 冲突不覆盖：另存一份「名字 (冲突 时间)」放同一个目录，下一轮它会自己传上去
+    private fun conflictOf(file: File): File {
+        val stamp = SimpleDateFormat("yyyy-MM-dd HHmmss", Locale.US).format(Date())
+        val name = file.name
+        val dot = name.lastIndexOf('.')
+        val tagged = if (dot > 0) {
+            name.substring(0, dot) + " (冲突 $stamp)" + name.substring(dot)
+        } else {
+            "$name (冲突 $stamp)"
+        }
+        return File(file.parentFile, tagged)
     }
 
     // ---- WebDAV ----
@@ -156,7 +281,8 @@ object Dav {
                 } else {
                     val rel = rel(url) ?: continue
                     if (rel.isEmpty()) continue
-                    result[rel] = Item(url, time(tag(block, "getlastmodified")))
+                    val size = tag(block, "getcontentlength")?.toLongOrNull() ?: 0L
+                    result[rel] = Item(url, time(tag(block, "getlastmodified")), size)
                 }
             }
         }
@@ -200,6 +326,13 @@ object Dav {
                 tmp.renameTo(file)
             }
             file.setLastModified(if (stamp > 0L) stamp else System.currentTimeMillis())
+        }
+    }
+
+    private fun remove(url: String) {
+        call(url, "DELETE", null).use { response ->
+            // 404 = 已经没了，目的达到
+            if (!response.isSuccessful && response.code != 404) error("删除失败 HTTP ${response.code}")
         }
     }
 
