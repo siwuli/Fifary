@@ -41,7 +41,7 @@ object NotesStore {
     const val TRASH_KEEP_MS = 30L * 24 * 60 * 60 * 1000
 
     // 参考 app 里空标题存成「无标题」
-    private const val UNTITLED = "无标题"
+    const val UNTITLED = "无标题"
 
     private val now = System.currentTimeMillis()
 
@@ -141,9 +141,15 @@ object NotesStore {
 
     // 编辑页只在点「完成」时走这里。标题就是文件名，改标题等于给文件改名；
     // path 传空的表示新建。返回最终路径（改名后可能变了）。
+    // 没填标题（无标题 / 无标题 N）的笔记：编辑器标题栏留空，列表拿正文第一行顶上
+    fun isUntitled(name: String): Boolean =
+        name.isBlank() || name == UNTITLED || name.startsWith("$UNTITLED ")
+
     fun save(path: String, folder: String, title: String, body: String): String {
         val time = System.currentTimeMillis()
-        val name = title.trim().replace("/", " ").ifEmpty { UNTITLED }
+        val old = path.substringAfterLast('/').removeSuffix(".md")
+        // 标题空着：本来就是无标题的保持不变（否则每存一次都改名），有标题的清成无标题
+        val name = title.trim().replace("/", " ").ifEmpty { if (isUntitled(old)) old else UNTITLED }
         val key = PrivateVault.key
         val existing = byPath(path)
 

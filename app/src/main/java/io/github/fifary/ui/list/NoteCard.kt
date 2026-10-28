@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.fifary.data.Note
+import io.github.fifary.data.NotesStore
 import io.github.fifary.ui.components.SelectCheck
 import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Motion
@@ -84,6 +85,8 @@ fun NoteCard(
         label = "appear",
     )
 
+    val (head, rest) = headingOf(note)
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -107,7 +110,7 @@ fun NoteCard(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = note.name,
+                            text = head,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = if (grid) 2 else 1,
@@ -116,11 +119,10 @@ fun NoteCard(
                     }
 
                     if (!grid) {
-                        val preview = previewOf(note.body)
                         val line = if (note.deletedAt > 0L) {
                             "删除于 ${DateFormat.format(Date(note.deletedAt))}"
                         } else {
-                            "${timeLabel(note.updatedAt)}  $preview"
+                            "${timeLabel(note.updatedAt)}  $rest"
                         }
                         if (line.isNotEmpty()) {
                             Text(
@@ -141,10 +143,9 @@ fun NoteCard(
             }
 
             if (grid) {
-                val preview = previewOf(note.body)
-                if (preview.isNotEmpty()) {
+                if (rest.isNotEmpty()) {
                     Text(
-                        text = preview,
+                        text = rest,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 3,
@@ -168,17 +169,44 @@ fun NoteCard(
     }
 }
 
-// 卡片预览去掉 Markdown 噪音（井号、引用符、列表符、代码围栏、内嵌 HTML 标签）
-internal fun previewOf(body: String): String =
+// 卡片预览去掉 Markdown 噪音（井号、引用符、列表符、代码围栏、内嵌 HTML 标签），
+// 图片和链接只留文字，文件地址不能露在预览里
+internal fun noteLines(body: String): List<String> =
     body.lineSequence()
         .map { it.trim() }
         .filter { it.isNotEmpty() && !it.startsWith("```") }
-        .map { it.replace(TAG, "") }
-        .map { it.trimStart('#', '>', '-', '*', ' ', '\t').replace(BOX, "") }
-        .map { it.replace("**", "").replace("~~", "").replace("`", "") }
-        .filter { it.isNotEmpty() }
-        .joinToString(" ")
-        .take(160)
+        .map { TAG.replace(it, "") }
+        .map { IMG.replace(it, "") }
+        .map { LINK.replace(it, "$1") }
+        .map { LEAD.replace(it, "") }
+        .map { BOX.replace(it, "") }
+        .map { STRIKE.replace(it, "$1") }
+        .map { BOLD.replace(it, "$1") }
+        .map { ITAL.replace(it, "$1") }
+        .map { CODE.replace(it, "$1") }
+        .map { NOISE.replace(it, "") }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && it != "---" }
+        .toList()
+
+// 标题就是正文第一行（参考便签就是这么存的）：填了标题用文件名，
+// 没填（无标题 / 无标题 N）就拿正文第一行的字顶上去，预览从后面接着
+internal fun headingOf(note: Note): Pair<String, String> {
+    val lines = noteLines(note.body)
+    if (!NotesStore.isUntitled(note.name)) return note.name to joinPreview(lines)
+    if (lines.isEmpty()) return note.name to ""
+    return lines.first() to joinPreview(lines.drop(1))
+}
+
+private fun joinPreview(lines: List<String>): String = lines.joinToString(" ").take(160)
 
 private val TAG = Regex("<[^>]+>")
+private val IMG = Regex("!\\[[^\\]]*\\]\\([^)]*\\)")
+private val LINK = Regex("\\[([^\\]]+)\\]\\([^)]*\\)")
+private val LEAD = Regex("^(?:[#>]+\\s*|[-*+]\\s+|\\d+\\.\\s+)+")
 private val BOX = Regex("^\\[[ xX]\\]\\s*")
+private val STRIKE = Regex("~~([^~]+)~~")
+private val BOLD = Regex("\\*\\*([^*]+)\\*\\*")
+private val ITAL = Regex("\\*([^*]+)\\*")
+private val CODE = Regex("`([^`]+)`")
+private val NOISE = Regex("\\*+|~~|`|\\|")

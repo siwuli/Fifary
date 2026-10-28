@@ -97,6 +97,7 @@ import io.github.fifary.data.Attach
 import io.github.fifary.data.Note
 import io.github.fifary.data.NotesStore
 import io.github.fifary.ui.theme.Space
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import kotlinx.coroutines.delay
@@ -119,8 +120,9 @@ fun EditorScreen(
     onSave: (title: String, body: String) -> Unit,
 ) {
     val context = LocalContext.current
-    var title by remember(note?.path) { mutableStateOf(note?.name.orEmpty()) }
     val initial = remember(note?.path) { note?.body.orEmpty() }
+    // 无标题的笔记进编辑器时标题栏留空（显示「标题」提示），填了标题才用文件名
+    val initialTitle = remember(note?.path) { note?.name.orEmpty().takeUnless { NotesStore.isUntitled(it) }.orEmpty() }
     var panel by remember { mutableStateOf(Panel.NONE) }
     var page by remember { mutableStateOf<WebView?>(null) }
 
@@ -192,9 +194,19 @@ fun EditorScreen(
             onDiscard()
             return
         }
-        view.evaluateJavascript("getMd()") { json ->
-            val md = runCatching { JSONTokener(json).nextValue() as String }.getOrDefault("")
-            if (note == null && title.isBlank() && md.isBlank()) onDiscard() else onSave(title, md)
+        // 标题也在正文里（第一行），一次取回来，省得两条异步各取各的。
+        // evaluateJavascript 会把返回值再包一层 JSON 字符串，所以这里要解两次；
+        // 解不出来就留在编辑器别存，免得把笔记存成空的
+        view.evaluateJavascript("JSON.stringify([getTitle(), getMd()])") { json ->
+            val inner = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
+            val arr = inner?.let { runCatching { JSONTokener(it).nextValue() as JSONArray }.getOrNull() }
+            if (arr == null) {
+                Toast.makeText(context, "没能取出正文，再点一次完成", Toast.LENGTH_SHORT).show()
+                return@evaluateJavascript
+            }
+            val t = arr.optString(0).orEmpty()
+            val md = arr.optString(1).orEmpty()
+            if (note == null && t.isBlank() && md.isBlank()) onDiscard() else onSave(t, md)
         }
     }
 
@@ -340,38 +352,8 @@ fun EditorScreen(
             modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),
         )
 
-        // 标题：参考 app 单独一块，上限 50 字，占位就写「标题」
-        BasicTextField(
-            value = title,
-            onValueChange = { if (it.length <= 50) title = it.replace('\n', ' ') },
-            singleLine = true,
-            textStyle = TextStyle(
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            ),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 24.dp, end = 20.dp, top = 12.dp, bottom = 10.dp)
-                .heightIn(min = 45.dp),
-            decorationBox = { inner ->
-                Box {
-                    if (title.isEmpty()) {
-                        Text(
-                            text = "标题",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                    inner()
-                }
-            },
-        )
-
         RichBody(
+            title = initialTitle,
             markdown = initial,
             modifier = Modifier
                 .fillMaxWidth()
