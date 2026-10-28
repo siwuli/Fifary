@@ -208,10 +208,9 @@ fun rememberSecretGate(): SecretGate {
 // 底部悬浮操作条：图标 + 文字，均匀分布，整条像一颗浮在内容上的胶囊
 @Composable
 fun FloatingActionBar(actions: List<BarAction>, modifier: Modifier = Modifier) {
-    Surface(
+    Bubble(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = Elev.floating,
+        elevation = Elev.bubble,
         modifier = modifier,
     ) {
         Row(
