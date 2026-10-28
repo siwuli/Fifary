@@ -12,7 +12,7 @@
     outline: none;
     word-break: break-word;
   }
-  body:empty::before { content: "输入文本，键入“/”快速调整格式"; color: #b8b8bc; }
+  body:empty::before { content: "输入文本"; color: #b8b8bc; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
@@ -34,12 +34,9 @@
   ul.todo > li { display: flex; gap: 8px; align-items: flex-start; }
   ul.todo > li > input { font-size: inherit; width: 1em; height: 1em; margin: 0.32em 0 0 0; flex: none; accent-color: #2f6bff; }
   ul.todo > li[data-done="1"] > .t { color: #9a9a9e; text-decoration: line-through; }
-  #slash { position: fixed; left: 10px; right: 10px; bottom: 10px; display: none; background: #fff; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,.18); padding: 6px; z-index: 9; }
-  #slash span { display: inline-block; margin: 3px; padding: 7px 12px; border-radius: 12px; font-size: 14px; background: #f4f4f6; }
 </style>
 </head>
 <body contenteditable="true" spellcheck="false"></body>
-<div id="slash"></div>
 <script>
 function inline(s) {
   var keep = [];
@@ -227,7 +224,7 @@ function htmlToMd() {
   var lines = [], kids = document.body.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
-    if (!el || el.id === 'slash' || el.nodeName === 'INPUT' || el.nodeName === 'BR') continue;
+    if (!el || el.nodeName === 'INPUT' || el.nodeName === 'BR') continue;
     var tag = el.nodeName;
     if (tag === 'HR') { lines.push('---'); continue; }
     if (tag === 'IMG') { lines.push('![](' + el.getAttribute('src') + ')'); continue; }
@@ -253,10 +250,7 @@ function htmlToMd() {
 }
 
 function setMd(md) {
-  var menu = document.getElementById('slash');
   document.body.innerHTML = mdToHtml(md);
-  if (menu) document.body.appendChild(menu);
-  menu = document.getElementById('slash');
   syncTodos();
   hist = [];
   at = -1;
@@ -284,9 +278,7 @@ function snap() {
 }
 
 function applySnap(html) {
-  var menu = document.getElementById('slash');
   document.body.innerHTML = html;
-  if (menu) document.body.appendChild(menu);
   syncTodos();
 }
 
@@ -313,18 +305,16 @@ function syncSel() {
   var b = blockOf(s.anchorNode);
   if (!b) return 0;
   lastBlk = b;
-  saved = s.getRangeAt(0).cloneRange();
+  var r = s.getRangeAt(0);
+  // 点面板会让选区塌掉；光标还落在刚才那几块里，就留着那次多选，
+  // 不然再点一次同一个格式按钮就变成给第一块套第二层，取消不掉
+  if (r.collapsed && saved && !saved.collapsed && document.body.contains(saved.startContainer)
+    && saved.intersectsNode(b)) return 1;
+  saved = r.cloneRange();
   return 1;
 }
 
-document.addEventListener('selectionchange', function () {
-  var s = window.getSelection();
-  if (!s.rangeCount || !s.anchorNode || !document.body.contains(s.anchorNode)) return;
-  var blk = blockOf(s.anchorNode);
-  if (!blk) return;
-  lastBlk = blk;
-  saved = s.getRangeAt(0).cloneRange();
-});
+document.addEventListener('selectionchange', syncSel);
 
 // 面板一开正文只剩一小条，改完那一行要自己滚进来，不然看着像没改
 function see(el) {
@@ -355,6 +345,11 @@ function startOf(el, r) {
 // 在行首按退格就把这一项拆回正文段落（标记和框一起消失）
 function lift(li) {
   var p = document.createElement('p'), span = li.querySelector('span.t');
+  // 缩进/对齐/字号是行内样式，搬到新段落里，否则取消勾选框时这行会跳位
+  var keep = ['marginLeft', 'textAlign', 'fontSize'];
+  for (var q = 0; q < keep.length; q++) {
+    if (li.style[keep[q]]) p.style[keep[q]] = li.style[keep[q]];
+  }
   var kids = [].slice.call(span ? span.childNodes : li.childNodes);
   for (var i = 0; i < kids.length; i++) {
     var k = kids[i];
@@ -367,7 +362,7 @@ function lift(li) {
   if (after.length) {
     // 后面的项另起一个同样的列表，插在段落后面，顺序不变
     tail = document.createElement(list.nodeName.toLowerCase());
-    tail.className = list.className;
+    if (list.className) tail.className = list.className;
     for (var j = 0; j < after.length; j++) tail.appendChild(after[j]);
   }
   var ref = list.nextSibling;
@@ -428,7 +423,6 @@ function ensureBlock() {
   wrapBare();
   var kids = document.body.children, last = null;
   for (var i = kids.length - 1; i >= 0; i--) {
-    if (kids[i].id === 'slash') continue;
     if (!kids[i].textContent.trim()) continue; // 只有图片/分割线的段落不算可改的行
     if (/^(P|DIV|H1|H2|H3|BLOCKQUOTE|UL|OL)$/.test(kids[i].nodeName)) { last = kids[i]; break; }
   }
@@ -438,7 +432,7 @@ function ensureBlock() {
     return target;
   }
   var p = document.createElement('p');
-  document.body.insertBefore(p, document.getElementById('slash'));
+  document.body.appendChild(p);
   caretIn(p);
   return p;
 }
@@ -448,10 +442,23 @@ function blocksOfRange(range) {
   var out = [], els = document.body.querySelectorAll('p,h1,h2,h3,blockquote,li');
   for (var i = 0; i < els.length; i++) {
     var el = els[i];
-    if (el.closest('#slash') || el.querySelector('li')) continue;
+    if (el.querySelector('li')) continue;
     if (range.intersectsNode(el)) out.push(el);
   }
   return out;
+}
+
+// 改完格式，选区自己就塌了；再点一次同一个按钮会变成"套第二层"而不是取消。
+// 改完把选区重新罩住这几块
+function reselect(list) {
+  if (!list.length) return;
+  var last = list[list.length - 1], r = document.createRange();
+  r.setStart(list[0], 0);
+  r.setEnd(last, last.childNodes.length);
+  var s = window.getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+  saved = r.cloneRange();
 }
 
 // 把整块内容套进 tag（列表项保留复选框，嵌套列表不动）
@@ -495,6 +502,7 @@ function block(tag) {
   if (picked.length > 1) {
     for (var i = 0; i < picked.length; i++) picked[i] = setTag(picked[i], tag);
     syncTodos();
+    reselect(picked);
     see(picked[0]);
     return 1;
   }
@@ -518,10 +526,15 @@ function wrapTag(tag) {
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   // 跨行选中就整行逐块处理，等于批量调整
   if (picked.length > 1) {
-    var on = !picked[0].querySelector(tag);
+    // 每一块都已经有了才当"取消"；只要有一块没有，这次是"加上"
+    var on = true;
     for (var i = 0; i < picked.length; i++) {
-      if (on) wrapWhole(picked[i], tag); else unwrapAll(picked[i], tag);
+      if (!picked[i].querySelector(tag)) { on = false; break; }
     }
+    for (var i = 0; i < picked.length; i++) {
+      if (on) unwrapAll(picked[i], tag); else wrapWhole(picked[i], tag);
+    }
+    reselect(picked);
     see(picked[0]);
     return 1;
   }
@@ -559,6 +572,7 @@ function setSize(px) {
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
     for (var i = 0; i < picked.length; i++) picked[i].style.fontSize = px + 'px';
+    reselect(picked);
     see(picked[0]);
     return 1;
   }
@@ -637,11 +651,15 @@ function todo() {
   var li = currentLi();
   if (li) {
     var ul = li.parentNode;
+    if (ul.classList.contains('todo')) { // 再点一次就把勾选框撤掉，这一行的缩进/对齐跟着走
+      lift(li);
+      return 1;
+    }
     ul.classList.add('todo');
     for (var i = 0; i < ul.children.length; i++) {
       if (!ul.children[i].querySelector('input')) wrapTodo(ul.children[i]);
     }
-    return;
+    return 1;
   }
   var blk = ensureBlock();
   var list = document.createElement('ul');
@@ -705,43 +723,9 @@ function insertTable() {
     '<table><tbody><tr>' + cell + '</tr><tr>' + cell + '</tr></tbody></table>').firstChild);
 }
 
-var SLASH = [['标题', 'h1'], ['副标题', 'h2'], ['小标题', 'h3'], ['正文', 'p'],
-  ['列表', 'ul'], ['待办', 'todo'], ['注释', 'quote'], ['分割线', 'hr']];
-var slashBlock = null;
-
-function hideMenu() {
-  document.getElementById('slash').style.display = 'none';
-  slashBlock = null;
-}
-
 function blockOf(node) {
   while (node && node !== document.body && !/^(P|DIV|H1|H2|H3|BLOCKQUOTE|LI)$/.test(node.nodeName)) node = node.parentNode;
   return node && node !== document.body ? node : null;
-}
-
-function slashCheck() {
-  var blk = blockOf(window.getSelection().anchorNode);
-  if (blk && /^(P|DIV)$/.test(blk.nodeName) && /^(\s?\/)$/.test(blk.textContent)) {
-    slashBlock = blk;
-    document.getElementById('slash').style.display = 'block';
-  } else {
-    hideMenu();
-  }
-}
-
-function applySlash(kind) {
-  var blk = slashBlock;
-  hideMenu();
-  if (!blk) return;
-  blk.textContent = '';
-  saved = document.createRange();
-  saved.selectNodeContents(blk);
-  saved.collapse(false);
-  if (kind === 'hr') insertHr();
-  else if (kind === 'todo') todo();
-  else if (kind === 'ul') list(false);
-  else block(kind === 'quote' ? 'blockquote' : kind);
-  snap();
 }
 
 function align(dir) { return styleBlock('textAlign', dir); }
@@ -755,23 +739,9 @@ function indent(delta) {
   return 1;
 }
 
-function buildMenu() {
-  var menu = document.getElementById('slash'), html = '';
-  for (var i = 0; i < SLASH.length; i++) {
-    html += '<span data-k="' + SLASH[i][1] + '">' + SLASH[i][0] + '</span>';
-  }
-  menu.innerHTML = html;
-  menu.addEventListener('click', function (e) {
-    var k = e.target && e.target.getAttribute && e.target.getAttribute('data-k');
-    if (k) applySlash(k);
-  });
-}
-
-buildMenu();
 snap();
 document.body.addEventListener('input', function () {
   syncTodos();
-  slashCheck();
   clearTimeout(pending);
   pending = setTimeout(snap, 400);
 });
