@@ -1,5 +1,6 @@
 package io.github.fifary
 
+import io.github.fifary.ui.S
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -12,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import io.github.fifary.data.Dav
 import io.github.fifary.data.Note
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.PrivateVault
@@ -25,7 +27,10 @@ import io.github.fifary.ui.categories.CategoryManagerScreen
 import io.github.fifary.ui.components.rememberSecretGate
 import io.github.fifary.ui.editor.EditorScreen
 import io.github.fifary.ui.list.NoteListScreen
+import io.github.fifary.ui.settings.AboutScreen
+import io.github.fifary.ui.settings.DebugScreen
 import io.github.fifary.ui.settings.SettingsScreen
+import io.github.fifary.ui.settings.SyncScreen
 import io.github.fifary.ui.theme.FifaryTheme
 
 @Composable
@@ -34,6 +39,7 @@ fun FifaryApp() {
         val navigator = rememberNavigator()
         val gate = rememberSecretGate()
         val lifecycle = LocalLifecycleOwner.current
+        val context = LocalContext.current
 
         // 私密区域 = 私密列表或一篇私密笔记。只有真的离开这块区域才上锁：
         // 在私密列表里打开一篇笔记、或者在里面新建，都不该再要一次密码
@@ -48,8 +54,11 @@ fun FifaryApp() {
                     // 切后台就上锁：私密内容不能在最近任务里露脸
                     Lifecycle.Event.ON_STOP -> PrivateVault.lock()
                     // 回来时私密区域已经锁着了：先把密码要回来，不然这次的改动存不进去
-                    Lifecycle.Event.ON_START ->
+                    Lifecycle.Event.ON_START -> {
+                        // 回到前台先对一遍远端，再去开门（要密码的页面这时候可能已经锁了）
+                        Dav.auto(context)
                         if (!PrivateVault.unlocked && privateArea(navigator.stack.last())) gate.run { }
+                    }
                     else -> Unit
                 }
             }
@@ -121,7 +130,7 @@ fun FifaryApp() {
                         // 或者在私密里新建出一篇不加密、列表里还看不见的笔记
                         val secret = note?.secret == true || (note == null && screen.folder == NotesStore.PRIVATE)
                         if (secret && !PrivateVault.unlocked) {
-                            Toast.makeText(context, "私密笔记已锁定，这次改动没保存", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, S("私密笔记已锁定，这次改动没保存"), Toast.LENGTH_SHORT).show()
                         } else {
                             path = NotesStore.save(path, screen.folder, title, body)
                         }
@@ -161,7 +170,16 @@ fun FifaryApp() {
                     onClose = { navigator.back() },
                 )
 
-                Screen.Settings -> SettingsScreen(onBack = { navigator.back() })
+                Screen.Settings -> SettingsScreen(
+                    onBack = { navigator.back() },
+                    onOpenSync = { navigator.open(Screen.Sync) },
+                    onOpenAbout = { navigator.open(Screen.About) },
+                    onOpenDebug = { navigator.open(Screen.Debug) },
+                )
+
+                Screen.Sync -> SyncScreen(onBack = { navigator.back() })
+                Screen.About -> AboutScreen(onBack = { navigator.back() })
+                Screen.Debug -> DebugScreen(onBack = { navigator.back() })
             }
         }
     }

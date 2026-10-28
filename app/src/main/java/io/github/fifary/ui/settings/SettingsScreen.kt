@@ -1,192 +1,292 @@
 package io.github.fifary.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.github.fifary.data.AppLang
+import io.github.fifary.data.Dav
+import io.github.fifary.data.NotesStore
 import io.github.fifary.data.Palette
 import io.github.fifary.data.Palettes
 import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.SettingsStore
+import io.github.fifary.data.Storage
 import io.github.fifary.data.ThemeMode
-import io.github.fifary.ui.components.CircleButton
+import io.github.fifary.ui.S
+import io.github.fifary.ui.applyLang
 import io.github.fifary.ui.components.InputDialog
+import io.github.fifary.ui.components.TextPill
 import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Radius
 import io.github.fifary.ui.theme.Size
 import io.github.fifary.ui.theme.Space
+import java.io.File
 
-private val MODE_LABELS = listOf(
+private val MODES = listOf(
     ThemeMode.SYSTEM to "跟随系统",
     ThemeMode.LIGHT to "浅色",
     ThemeMode.DARK to "深色",
 )
 
+private val LANGS = listOf(
+    AppLang.SYSTEM to "跟随系统",
+    AppLang.ZH to "简体中文",
+    AppLang.EN to "English",
+)
+
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
-    // 私密密码：设置 / 修改（改密码只重新包一次数据密钥，不动笔记）
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onOpenSync: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onOpenDebug: () -> Unit,
+) {
+    val context = LocalContext.current
+
     var askSet by remember { mutableStateOf(false) }
     var askOld by remember { mutableStateOf(false) }
     var askNew by remember { mutableStateOf(false) }
     var oldPassword by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
+    var pickStorage by remember { mutableStateOf(false) }
+    var askPath by remember { mutableStateOf(false) }
+    var askImport by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<Uri?>(null) }
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.background) { inner ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(inner)
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.l)
-                .padding(bottom = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(Space.m),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = Space.xs, bottom = Space.s),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircleButton(onClick = onBack) { ChevronLeft() }
-                Spacer(Modifier.size(Space.s))
-                Text("设置", style = MaterialTheme.typography.headlineLarge)
-            }
+    val toast: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
 
-            SectionLabel("外观")
-            Card {
-                Column(Modifier.padding(Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
-                    Text(
-                        text = "主题",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                        MODE_LABELS.forEach { (mode, label) ->
-                            ThemePill(
-                                text = label,
-                                selected = SettingsStore.themeMode == mode,
-                                onClick = { SettingsStore.updateThemeMode(mode) },
-                            )
-                        }
+    fun relocate(target: File) {
+        pickStorage = false
+        val ok = Storage.relocate(context, target)
+        NotesStore.reload(context)
+        toast(S(if (ok) "已切换存储位置" else "切换失败，文件没有动"))
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val count = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { Storage.export(context, it) }
+        }.getOrNull()
+        toast(S(if (count == null) "导出失败" else "导出完成"))
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        pendingImport = uri
+        askImport = true
+    }
+
+    fun doImport(uri: Uri) {
+        val count = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { Storage.import(context, it) }
+        }.getOrNull()
+        NotesStore.reload(context)
+        toast(S(if (count == null) "导入失败" else "导入完成"))
+    }
+
+    SettingsPage(title = S("设置"), onBack = onBack) {
+        SectionLabel(S("外观"))
+        Group {
+            Column(Modifier.padding(Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                Label(S("主题"))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    MODES.forEach { (mode, text) ->
+                        Pill(S(text), SettingsStore.themeMode == mode) { SettingsStore.updateThemeMode(mode) }
                     }
-
-                    Spacer(Modifier.height(Space.xxs))
-                    Text(
-                        text = "页面颜色 · ${SettingsStore.palette.name}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    // 六个色块平分一行，窄屏也不会有够不到的第七个
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(Space.xs),
-                    ) {
-                        Palettes.forEach { palette ->
-                            PaletteSwatch(
-                                palette = palette,
-                                selected = SettingsStore.palette.id == palette.id,
-                                onClick = { SettingsStore.updatePalette(palette) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
+                }
+                Spacer(Modifier.height(Space.xxs))
+                Label(S("颜色"))
+                // 六个色块平分一行，窄屏也不会有够不到的第七个
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    Palettes.forEach { palette ->
+                        Swatch(
+                            palette = palette,
+                            selected = SettingsStore.palette.id == palette.id,
+                            onClick = { SettingsStore.updatePalette(palette) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
-
-            SectionLabel("私密笔记")
-            Card {
-                SettingRow(
-                    title = "私密密码",
-                    value = if (PrivateVault.enabled) "已设置" else "未设置",
-                    onClick = {
-                        message = null
-                        if (PrivateVault.enabled) askOld = true else askSet = true
-                    },
-                )
-                if (PrivateVault.unlocked) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(start = Space.l),
-                    )
-                    SettingRow(
-                        title = "立即锁定",
-                        value = null,
-                        onClick = {
-                            PrivateVault.lock()
-                            message = "已锁定，看私密笔记要重新输密码"
-                        },
-                    )
-                }
-            }
-            Text(
-                text = "密码只在本机验证；私密笔记用独立数据密钥加密，改密码只换外面那层包裹，不会重写笔记。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(horizontal = Space.xxs),
-            )
-            message?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = Space.xxs),
-                )
-            }
-
-            // 装的是哪一版，看这一行就够了
-            Text(
-                text = version(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = Space.s, start = Space.xxs),
-            )
         }
+
+        SectionLabel(S("语言"))
+        Group {
+            Row(Modifier.padding(Space.l), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                LANGS.forEach { (lang, text) ->
+                    Pill(S(text), SettingsStore.language == lang) {
+                        SettingsStore.updateLanguage(lang)
+                        applyLang(lang)
+                    }
+                }
+            }
+        }
+
+        SectionLabel(S("存储"))
+        Group {
+            RowItem(S("存储位置"), S(Storage.label(context))) {
+                Toast.makeText(context, Storage.root(context).absolutePath, Toast.LENGTH_LONG).show()
+            }
+            Rule()
+            RowItem(S("设置新路径")) { pickStorage = true }
+        }
+
+        SectionLabel(S("数据"))
+        Group {
+            RowItem(S("导出备份")) { exportLauncher.launch("fifary-${System.currentTimeMillis()}.zip") }
+            Rule()
+            RowItem(S("导入备份")) { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+        }
+
+        SectionLabel(S("私密"))
+        Group {
+            RowItem(S("私密密码"), S(if (PrivateVault.enabled) "已设置" else "未设置")) {
+                if (PrivateVault.enabled) askOld = true else askSet = true
+            }
+            if (PrivateVault.unlocked) {
+                Rule()
+                RowItem(S("立即锁定")) {
+                    PrivateVault.lock()
+                    toast(S("已锁定"))
+                }
+            }
+        }
+
+        SectionLabel(S("更多"))
+        Group {
+            RowItem(S("同步数据"), S(if (Dav.configured) "已配置" else "未配置")) { onOpenSync() }
+            Rule()
+            RowItem(S("关于"), appVersion()) { onOpenAbout() }
+            Rule()
+            RowItem(S("调试")) { onOpenDebug() }
+        }
+    }
+
+    if (pickStorage) {
+        AlertDialog(
+            onDismissRequest = { pickStorage = false },
+            shape = RoundedCornerShape(Radius.sheet),
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            title = { Text(S("存储位置"), style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        text = Storage.root(context).absolutePath,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(Space.s))
+                    StorageOption(S("内部存储"), Storage.internalRoot(context).absolutePath) {
+                        relocate(Storage.internalRoot(context))
+                    }
+                    StorageOption(S("应用外部目录"), Storage.externalRoot(context).absolutePath) {
+                        relocate(Storage.externalRoot(context))
+                    }
+                    StorageOption(S("自定义目录"), null) {
+                        pickStorage = false
+                        askPath = true
+                    }
+                }
+            },
+            confirmButton = { TextPill(S("取消")) { pickStorage = false } },
+        )
+    }
+
+    if (askPath) {
+        InputDialog(
+            title = S("输入目录路径"),
+            placeholder = "/sdcard/Documents/Fifary",
+            confirmText = S("保存"),
+            onDismiss = { askPath = false },
+            onConfirm = { path ->
+                askPath = false
+                val target = File(path.trim())
+                // 自定义到 /sdcard 下要「所有文件访问权限」，没有就先带用户去开
+                if (!Storage.hasAllFiles() && !target.canWrite()) {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:${context.packageName}"),
+                            )
+                        )
+                    }.onFailure {
+                        context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    }
+                    toast(S("所有文件访问权限"))
+                } else {
+                    relocate(target)
+                }
+            },
+        )
+    }
+
+    if (askImport && pendingImport != null) {
+        AlertDialog(
+            onDismissRequest = { askImport = false },
+            shape = RoundedCornerShape(Radius.sheet),
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            title = { Text(S("导入备份"), style = MaterialTheme.typography.titleMedium) },
+            text = { Text(S("导入会覆盖同名笔记，继续？"), style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextPill(S("确定")) {
+                    askImport = false
+                    pendingImport?.let(::doImport)
+                    pendingImport = null
+                }
+            },
+            dismissButton = { TextPill(S("取消")) { askImport = false } },
+        )
     }
 
     if (askSet) {
         InputDialog(
-            title = "设置私密密码",
-            placeholder = "至少 4 位",
-            confirmText = "保存",
+            title = S("设置私密密码"),
+            placeholder = S("至少 4 位"),
+            confirmText = S("保存"),
             masked = true,
-            note = "密码只存在本机，忘了就解不开。",
+            note = S("密码只存在本机，忘了就解不开。"),
             onDismiss = { askSet = false },
             onConfirm = { value ->
                 if (PrivateVault.setPassword(value)) {
                     askSet = false
-                    message = "私密密码已设置"
+                    toast(S("私密密码已设置"))
                 }
             },
         )
@@ -194,9 +294,9 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     if (askOld) {
         InputDialog(
-            title = "输入当前密码",
-            placeholder = "密码",
-            confirmText = "下一步",
+            title = S("输入当前密码"),
+            placeholder = S("密码"),
+            confirmText = S("下一步"),
             masked = true,
             onDismiss = { askOld = false },
             onConfirm = { value ->
@@ -205,7 +305,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     askOld = false
                     askNew = true
                 } else {
-                    message = "密码不对"
+                    toast(S("密码不对"))
                 }
             },
         )
@@ -213,18 +313,14 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     if (askNew) {
         InputDialog(
-            title = "设置新密码",
-            placeholder = "至少 4 位",
-            confirmText = "保存",
+            title = S("设置新密码"),
+            placeholder = S("至少 4 位"),
+            confirmText = S("保存"),
             masked = true,
             onDismiss = { askNew = false },
             onConfirm = { value ->
                 askNew = false
-                message = if (PrivateVault.changePassword(oldPassword, value)) {
-                    "密码已修改，笔记不用重新加密"
-                } else {
-                    "修改失败，密码没有变"
-                }
+                toast(S(if (PrivateVault.changePassword(oldPassword, value)) "密码已修改" else "修改失败，密码没有变"))
                 oldPassword = ""
             },
         )
@@ -232,54 +328,16 @@ fun SettingsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun Card(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(Radius.card),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(content = content)
-    }
-}
-
-@Composable
-private fun SettingRow(title: String, value: String?, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .springPressable(onClick = onClick)
-            .padding(horizontal = Space.l, vertical = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        if (value != null) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Icon(
-            Icons.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
+private fun Label(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = Space.xxs, top = Space.xs),
     )
 }
 
 @Composable
-private fun ThemePill(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
     // 卡片是白底，所以选中的胶囊用强调色填充，而不是"白底+阴影"
     Surface(
         onClick = onClick,
@@ -295,7 +353,26 @@ private fun ThemePill(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PaletteSwatch(
+private fun StorageOption(title: String, path: String?, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .springPressable(onClick = onClick)
+            .padding(vertical = Space.s),
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyLarge)
+        if (path != null) {
+            Text(
+                text = path,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Swatch(
     palette: Palette,
     selected: Boolean,
     onClick: () -> Unit,
@@ -313,47 +390,8 @@ private fun PaletteSwatch(
     ) {
         Box(Modifier.background(palette.lightAccent), contentAlignment = Alignment.Center) {
             if (selected) {
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .background(MaterialTheme.colorScheme.surface, CircleShape)
-                )
+                Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.surface, CircleShape))
             }
         }
-    }
-}
-
-@Composable
-private fun ChevronLeft() {
-    val tint = MaterialTheme.colorScheme.onSurface
-    Canvas(Modifier.size(18.dp)) {
-        val w = size.width
-        val h = size.height
-        val stroke = w * 0.13f
-        drawLine(
-            tint,
-            androidx.compose.ui.geometry.Offset(w * 0.62f, h * 0.18f),
-            androidx.compose.ui.geometry.Offset(w * 0.32f, h * 0.5f),
-            stroke,
-            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-        )
-        drawLine(
-            tint,
-            androidx.compose.ui.geometry.Offset(w * 0.32f, h * 0.5f),
-            androidx.compose.ui.geometry.Offset(w * 0.62f, h * 0.82f),
-            stroke,
-            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-        )
-    }
-}
-
-@Composable
-private fun version(): String {
-    val context = LocalContext.current
-    return remember {
-        runCatching {
-            val info = context.packageManager.getPackageInfo(context.packageName, 0)
-            "Fifary ${info.versionName} (${info.longVersionCode})"
-        }.getOrDefault("Fifary")
     }
 }

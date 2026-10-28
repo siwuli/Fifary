@@ -7,7 +7,6 @@ import java.io.File
 // 整个目录拷走就是一次完整备份，放回来就能用，不需要数据库。
 object Vault {
 
-    private const val DIR = "vault"
     private const val FENCE = "---"
     private const val CREATED = "created"
     private const val UPDATED = "updated"
@@ -20,7 +19,7 @@ object Vault {
 
     // null = vault 目录本来不存在，也就是第一次装
     fun open(context: Context): List<Note>? {
-        val dir = File(context.filesDir, DIR)
+        val dir = Storage.root(context)
         root = dir
         if (!dir.exists()) {
             dir.mkdirs()

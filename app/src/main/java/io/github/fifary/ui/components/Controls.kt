@@ -1,5 +1,6 @@
 package io.github.fifary.ui.components
 
+import io.github.fifary.ui.S
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -133,7 +134,7 @@ fun SelectCheck(selected: Boolean) {
         ) {
             Icon(
                 Icons.Filled.Check,
-                contentDescription = "已选",
+                contentDescription = S("已选"),
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(14.dp),
             )

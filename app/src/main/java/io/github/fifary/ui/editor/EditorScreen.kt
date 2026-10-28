@@ -1,5 +1,7 @@
 package io.github.fifary.ui.editor
 
+import io.github.fifary.ui.Lang
+import io.github.fifary.ui.S
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
@@ -184,7 +186,7 @@ fun EditorScreen(
     fun fmt(code: String) {
         val view = page
         if (view == null) {
-            Toast.makeText(context, "编辑器还没准备好", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, S("编辑器还没准备好"), Toast.LENGTH_SHORT).show()
             return
         }
         // 焦点得在改之前给回 WebView：焦点在标题上时改 DOM，浏览器不画光标
@@ -195,7 +197,7 @@ fun EditorScreen(
             imm.showSoftInput(view, 0)
         }
         view.evaluateJavascript("var _r = ($code); snap(); _r") { r ->
-            if (r == "0") Toast.makeText(context, "先点一下要改的那一行", Toast.LENGTH_SHORT).show()
+            if (r == "0") Toast.makeText(context, S("先点一下要改的那一行"), Toast.LENGTH_SHORT).show()
         }
         // 改的是 DOM，WebView 偶尔不自己重绘
         view.invalidate()
@@ -207,7 +209,7 @@ fun EditorScreen(
         view.evaluateJavascript("getMd()") { json ->
             val md = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
             if (md == null) {
-                Toast.makeText(context, "没能取出正文，再点一次完成", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, S("没能取出正文，再点一次完成"), Toast.LENGTH_SHORT).show()
                 return@evaluateJavascript
             }
             after(md)
@@ -253,7 +255,7 @@ fun EditorScreen(
         }.getOrNull()
         if (started == null) {
             file.delete()
-            Toast.makeText(context, "这台设备没法录音", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, S("这台设备没法录音"), Toast.LENGTH_SHORT).show()
             return
         }
         recorder = started
@@ -284,7 +286,7 @@ fun EditorScreen(
     }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startRecord()
-        else Toast.makeText(context, "没有麦克风权限", Toast.LENGTH_SHORT).show()
+        else Toast.makeText(context, S("没有麦克风权限"), Toast.LENGTH_SHORT).show()
     }
 
     var shot by remember { mutableStateOf<File?>(null) }
@@ -307,7 +309,7 @@ fun EditorScreen(
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "文件"
+            val name = uri.lastPathSegment?.substringAfterLast('/') ?: S("文件")
             Attach.copy(context, uri)?.let { path ->
                 fmt("insertLink(${JSONObject.quote(path)}, ${JSONObject.quote(name)})")
             }
@@ -339,11 +341,11 @@ fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
-            TopBubble(Icons.Filled.ArrowBack, "返回") { leave() }
+            TopBubble(Icons.Filled.ArrowBack, S("返回")) { leave() }
             Spacer(Modifier.weight(1f))
             // 参考顶栏：撤销 / 重做 / 完成
-            TopBubble(Icons.Filled.Undo, "撤销", enabled = canUndo) { js("undo()") }
-            TopBubble(Icons.Filled.Redo, "重做", enabled = canRedo) { js("redo()") }
+            TopBubble(Icons.Filled.Undo, S("撤销"), enabled = canUndo) { js("undo()") }
+            TopBubble(Icons.Filled.Redo, S("重做"), enabled = canRedo) { js("redo()") }
             Bubble(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary,
@@ -352,7 +354,7 @@ fun EditorScreen(
                 onClick = { leave() },
             ) {
                 Text(
-                    text = "完成",
+                    text = S("完成"),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.padding(horizontal = Space.m),
@@ -400,14 +402,14 @@ fun EditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(Space.xxs),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            BubbleIcon(Icons.Filled.FormatSize, "格式") {
+                            BubbleIcon(Icons.Filled.FormatSize, S("格式")) {
                                 // 面板一开 WebView 就丢焦点，进来先把选区抓下来
                                 js("syncSel()")
                                 panel = Panel.FORMAT
                             }
                             if (typing || recorder != null) {
-                                BubbleIcon(Icons.Filled.Checklist, "待办") { fmt("todo()") }
-                                BubbleIcon(Icons.Filled.Photo, "图片") {
+                                BubbleIcon(Icons.Filled.Checklist, S("待办")) { fmt("todo()") }
+                                BubbleIcon(Icons.Filled.Photo, S("图片")) {
                                     pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
                                 // 录音走 App 自己的录制：系统的「语音输入」能不能用全看设备装了什么，
@@ -415,7 +417,7 @@ fun EditorScreen(
                                 val recording = recorder != null
                                 BubbleIcon(
                                     icon = if (recording) Icons.Filled.Stop else Icons.Filled.Mic,
-                                    label = if (recording) "录音中 ${recordSec}s" else "录音",
+                                    label = if (recording) "录音中 ${recordSec}s" else S("录音"),
                                     tint = if (recording) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                 ) {
                                     if (recording) {
@@ -425,7 +427,7 @@ fun EditorScreen(
                                     }
                                 }
                             }
-                            BubbleIcon(Icons.Filled.Add, "插入") { panel = Panel.INSERT }
+                            BubbleIcon(Icons.Filled.Add, S("插入")) { panel = Panel.INSERT }
                         }
 
                         // 参考 rich_text_tool_panel_layout：标题栏（左 20dp「格式」+ 右上 24dp ✕），
@@ -438,7 +440,7 @@ fun EditorScreen(
                                     .padding(start = 20.dp, end = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("格式", style = MaterialTheme.typography.titleLarge)
+                                Text(S("格式"), style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.weight(1f))
                                 Box(
                                     Modifier
@@ -447,38 +449,38 @@ fun EditorScreen(
                                         .clickable { panel = Panel.NONE },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Filled.Close, contentDescription = "收起", modifier = Modifier.size(24.dp))
+                                    Icon(Icons.Filled.Close, contentDescription = S("收起"), modifier = Modifier.size(24.dp))
                                 }
                             }
 
                             // 文字样式：标题 24 / 副标题 20 / 小标题 16 半粗 / 正文 16 / 注释 14
                             PanelRow {
-                                StyleButton("标题", 24, FontWeight.SemiBold) { fmt("block('h1')") }
-                                StyleButton("副标题", 20, FontWeight.SemiBold) { fmt("block('h2')") }
-                                StyleButton("小标题", 16, FontWeight.SemiBold) { fmt("block('h3')") }
-                                StyleButton("正文", 16, FontWeight.Normal) { fmt("block('p')") }
-                                StyleButton("注释", 14, FontWeight.Normal) { fmt("block('blockquote')") }
+                                StyleButton(S("标题"), 24, FontWeight.SemiBold) { fmt("block('h1')") }
+                                StyleButton(S("副标题"), 20, FontWeight.SemiBold) { fmt("block('h2')") }
+                                StyleButton(S("小标题"), 16, FontWeight.SemiBold) { fmt("block('h3')") }
+                                StyleButton(S("正文"), 16, FontWeight.Normal) { fmt("block('p')") }
+                                StyleButton(S("注释"), 14, FontWeight.Normal) { fmt("block('blockquote')") }
                             }
 
                             // 只留 markdown 存得下的：下划线/文字底色/字体/字号/缩进/对齐/波浪线
                             // 存进 .md 只能变成一堆内嵌 HTML，干脆不要这些按钮
                             PanelRow {
-                                BubbleIcon(Icons.Filled.FormatBold, "加粗", box = 44.dp) { fmt("wrapTag('b')") }
-                                BubbleIcon(Icons.Filled.FormatItalic, "斜体", box = 44.dp) { fmt("wrapTag('i')") }
-                                BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线", box = 44.dp) {
+                                BubbleIcon(Icons.Filled.FormatBold, S("加粗"), box = 44.dp) { fmt("wrapTag('b')") }
+                                BubbleIcon(Icons.Filled.FormatItalic, S("斜体"), box = 44.dp) { fmt("wrapTag('i')") }
+                                BubbleIcon(Icons.Filled.FormatStrikethrough, S("删除线"), box = 44.dp) {
                                     fmt("wrapTag('s')")
                                 }
-                                BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表", box = 44.dp) {
+                                BubbleIcon(Icons.Filled.FormatListBulleted, S("无序列表"), box = 44.dp) {
                                     fmt("list(false)")
                                 }
-                                BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表", box = 44.dp) {
+                                BubbleIcon(Icons.Filled.FormatListNumbered, S("有序列表"), box = 44.dp) {
                                     fmt("list(true)")
                                 }
                             }
 
                             PanelRow {
-                                BubbleIcon(Icons.Filled.Checklist, "待办", box = 44.dp) { fmt("todo()") }
-                                BubbleIcon(Icons.Filled.HorizontalRule, "分割线", box = 44.dp) { fmt("insertHr()") }
+                                BubbleIcon(Icons.Filled.Checklist, S("待办"), box = 44.dp) { fmt("todo()") }
+                                BubbleIcon(Icons.Filled.HorizontalRule, S("分割线"), box = 44.dp) { fmt("insertHr()") }
                             }
                         }
 
@@ -498,45 +500,45 @@ fun EditorScreen(
                                         .clickable { if (recorder != null) stopRecord(); panel = Panel.NONE }
                                         .padding(horizontal = 20.dp, vertical = 8.dp),
                                 ) {
-                                    Text("关闭", style = MaterialTheme.typography.titleSmall)
+                                    Text(S("关闭"), style = MaterialTheme.typography.titleSmall)
                                 }
                                 Spacer(Modifier.weight(1f))
-                                Text("添加", style = MaterialTheme.typography.titleLarge)
+                                Text(S("添加"), style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.weight(1f))
                                 Spacer(Modifier.size(64.dp, 1.dp))
                             }
                             ExtraRow(
                                 listOf(
-                                    "相册" to Icons.Filled.Photo,
-                                    "拍摄" to Icons.Filled.PhotoCamera,
-                                    "表格" to Icons.Filled.TableChart,
-                                    "文件" to Icons.Filled.Folder,
+                                    S("相册") to Icons.Filled.Photo,
+                                    S("拍摄") to Icons.Filled.PhotoCamera,
+                                    S("表格") to Icons.Filled.TableChart,
+                                    S("文件") to Icons.Filled.Folder,
                                 ),
                             ) { label ->
                                 when (label) {
-                                    "相册" -> pickImage.launch(
+                                    S("相册") -> pickImage.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                                     )
-                                    "拍摄" -> photograph()
-                                    "表格" -> fmt("insertTable()")
-                                    "文件" -> pickFile.launch(arrayOf("*/*"))
+                                    S("拍摄") -> photograph()
+                                    S("表格") -> fmt("insertTable()")
+                                    S("文件") -> pickFile.launch(arrayOf("*/*"))
                                 }
                             }
                             ExtraRow(
                                 listOf(
-                                    (if (recorder != null) "录音中 ${recordSec}s" else "录音") to
+                                    (if (recorder != null) "录音中 ${recordSec}s" else S("录音")) to
                                         (if (recorder != null) Icons.Filled.Stop else Icons.Filled.Mic),
-                                    "分割线" to Icons.Filled.HorizontalRule,
+                                    S("分割线") to Icons.Filled.HorizontalRule,
                                 ),
                                 activeIndex = if (recorder != null) 0 else -1,
                             ) { label ->
                                 when {
-                                    label.startsWith("录音") -> if (recorder != null) {
+                                    label.startsWith(S("录音")) -> if (recorder != null) {
                                         stopRecord()
                                     } else {
                                         askMic.launch(android.Manifest.permission.RECORD_AUDIO)
                                     }
-                                    label == "分割线" -> fmt("insertHr()")
+                                    label == S("分割线") -> fmt("insertHr()")
                                 }
                             }
                         }
@@ -667,5 +669,7 @@ private fun StyleButton(label: String, size: Int, weight: FontWeight, onClick: (
 }
 
 
-private fun stamp(at: Long): String =
-    SimpleDateFormat("yyyy年M月d日 EEEE HH:mm", Locale.CHINA).format(Date(at))
+private fun stamp(at: Long): String = SimpleDateFormat(
+    if (Lang.en) "MMM d, yyyy HH:mm" else "yyyy年M月d日 EEEE HH:mm",
+    if (Lang.en) Locale.ENGLISH else Locale.CHINA,
+).format(Date(at))

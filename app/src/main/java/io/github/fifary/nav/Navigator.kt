@@ -39,6 +39,9 @@ sealed interface Screen {
     data class Editor(val path: String, val folder: String = "") : Screen
     data object Categories : Screen
     data object Settings : Screen
+    data object Sync : Screen
+    data object About : Screen
+    data object Debug : Screen
 }
 
 // 手写栈：为了拿到手势进度（NavHost 给不了 1:1 跟手）

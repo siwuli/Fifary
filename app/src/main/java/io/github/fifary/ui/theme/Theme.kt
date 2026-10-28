@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import io.github.fifary.data.Palette
+import io.github.fifary.ui.applyLang
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.data.ThemeMode
 
@@ -157,6 +158,8 @@ fun FifaryTheme(content: @Composable () -> Unit) {
         }
     }
     val palette = SettingsStore.palette
+    // 语言也挂在主题这里读：设置里一改，整棵树跟着重组，所有 S() 拿到新语言
+    applyLang(SettingsStore.language)
     CompositionLocalProvider(LocalDarkTheme provides dark) {
         MaterialTheme(
             colorScheme = if (dark) darkScheme(palette) else lightScheme(palette),

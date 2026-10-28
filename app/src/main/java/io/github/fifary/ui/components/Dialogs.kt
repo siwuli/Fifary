@@ -1,5 +1,6 @@
 package io.github.fifary.ui.components
 
+import io.github.fifary.ui.S
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,7 +105,7 @@ fun InputDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(S("取消")) }
         },
     )
 }
@@ -131,7 +132,7 @@ fun ConfirmDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(S("取消")) }
         },
     )
 }
@@ -183,18 +184,18 @@ fun rememberSecretGate(): SecretGate {
     val gate = remember { SecretGate() }
     when (gate.ask) {
         PasswordAsk.SET -> InputDialog(
-            title = "设置私密密码",
-            placeholder = "至少 4 位",
-            confirmText = "保存",
+            title = S("设置私密密码"),
+            placeholder = S("至少 4 位"),
+            confirmText = S("保存"),
             masked = true,
-            note = "密码只存在本机，忘了就解不开，也没有找回入口。",
+            note = S("密码只存在本机，忘了就解不开，也没有找回入口。"),
             onDismiss = gate::dismiss,
             onConfirm = gate::submit,
         )
         PasswordAsk.VERIFY -> InputDialog(
-            title = "输入私密密码",
-            placeholder = "密码",
-            confirmText = "解锁",
+            title = S("输入私密密码"),
+            placeholder = S("密码"),
+            confirmText = S("解锁"),
             masked = true,
             onDismiss = gate::dismiss,
             onConfirm = gate::submit,

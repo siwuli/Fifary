@@ -10,9 +10,9 @@ object Attach {
     const val DIR = "attachments"
 
     private fun dir(context: Context): File =
-        File(File(context.filesDir, "vault"), DIR).apply { mkdirs() }
+        File(Storage.root(context), DIR).apply { mkdirs() }
 
-    fun file(context: Context, relative: String): File = File(File(context.filesDir, "vault"), relative)
+    fun file(context: Context, relative: String): File = File(Storage.root(context), relative)
 
     fun copy(context: Context, uri: Uri): String? = runCatching {
         val type = context.contentResolver.getType(uri)?.substringAfterLast('/') ?: "jpg"

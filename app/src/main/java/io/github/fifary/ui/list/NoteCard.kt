@@ -42,11 +42,21 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import io.github.fifary.ui.Lang
+import io.github.fifary.ui.S
 
 private const val STAGGER_LIMIT = 12
 private val HmFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-private val DayFormat = SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINA)
-private val DateFormat = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
+// 日期格式跟着语言走：英文用 "Oct 28, 2026"，中文用参考 App 那套
+private fun dayFormat(): SimpleDateFormat = SimpleDateFormat(
+    if (Lang.en) "MMM d, yyyy" else "yyyy年M月d日 EEEE",
+    if (Lang.en) Locale.ENGLISH else Locale.CHINA,
+)
+
+private fun dateFormat(): SimpleDateFormat = SimpleDateFormat(
+    if (Lang.en) "MMM d, yyyy" else "yyyy年M月d日",
+    if (Lang.en) Locale.ENGLISH else Locale.CHINA,
+)
 private const val MINUTE = 60_000L
 
 // 卡片上的时间是「现在 - 最后修改」的差；列表里有个 20 秒走一次的钟推着它重新算
@@ -58,11 +68,11 @@ internal fun timeLabel(at: Long): String {
     val now = clockNow
     val diff = now - at
     return when {
-        diff < MINUTE -> "刚刚"
-        diff < 60 * MINUTE -> "${diff / MINUTE} 分钟前"
-        sameDay(now, at) -> "今天 ${HmFormat.format(Date(at))}"
-        sameDay(now - 24 * 60 * MINUTE, at) -> "昨天 ${HmFormat.format(Date(at))}"
-        else -> DayFormat.format(Date(at))
+        diff < MINUTE -> S("刚刚")
+        diff < 60 * MINUTE -> "${diff / MINUTE} " + S("分钟前")
+        sameDay(now, at) -> S("今天") + " " + HmFormat.format(Date(at))
+        sameDay(now - 24 * 60 * MINUTE, at) -> S("昨天") + " " + HmFormat.format(Date(at))
+        else -> dayFormat().format(Date(at))
     }
 }
 
@@ -134,7 +144,7 @@ fun NoteCard(
 
                     if (!grid) {
                         val line = if (note.deletedAt > 0L) {
-                            "删除于 ${DateFormat.format(Date(note.deletedAt))}"
+                            S("删除于") + " " + dateFormat().format(Date(note.deletedAt))
                         } else {
                             "${timeLabel(note.updatedAt)}  $rest"
                         }

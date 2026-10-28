@@ -1,5 +1,6 @@
 package io.github.fifary.ui.list
 
+import io.github.fifary.ui.S
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -169,15 +170,15 @@ fun NoteListScreen(
     }
 
     val title = when (folder) {
-        "" -> "笔记"
-        NotesStore.TRASH -> "最近删除"
-        NotesStore.PRIVATE -> "私密笔记"
+        "" -> S("笔记")
+        NotesStore.TRASH -> S("最近删除")
+        NotesStore.PRIVATE -> S("私密笔记")
         else -> folder
     }
     val subtitle = when {
         query.isNotBlank() -> "找到 ${shown.size} 篇"
         inTrash -> "${shown.size} 篇 · 删除后保留 30 天"
-        privateView -> if (locked) "已加密 · 需要密码" else "${shown.size} 篇 · 已加密"
+        privateView -> if (locked) S("已加密 · 需要密码") else "${shown.size} 篇 · 已加密"
         else -> "${shown.size} 篇笔记"
     }
 
@@ -198,9 +199,9 @@ fun NoteListScreen(
                     topInset = headerHeight,
                     lockedHint = privateView,
                     text = when {
-                        query.isNotBlank() -> "没有匹配的笔记"
-                        inTrash -> "最近删除是空的"
-                        else -> "这个分组还没有笔记"
+                        query.isNotBlank() -> S("没有匹配的笔记")
+                        inTrash -> S("最近删除是空的")
+                        else -> S("这个分组还没有笔记")
                     },
                 )
             } else if (viewMode == ViewMode.GRID) {
@@ -222,7 +223,7 @@ fun NoteListScreen(
                     }
                     if (hasPinned) {
                         item(key = "h-pin", span = { GridItemSpan(maxLineSpan) }) {
-                            SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
+                            SectionHeader(S("置顶"), collapsible = true, collapsed = pinnedCollapsed) {
                                 pinnedCollapsed = !pinnedCollapsed
                             }
                         }
@@ -250,7 +251,7 @@ fun NoteListScreen(
                     }
                     if (hasPinned && others.isNotEmpty()) {
                         item(key = "h-other", span = { GridItemSpan(maxLineSpan) }) {
-                            SectionHeader("其他", collapsible = false, collapsed = false) {}
+                            SectionHeader(S("其他"), collapsible = false, collapsed = false) {}
                         }
                     }
                     gridItemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
@@ -290,7 +291,7 @@ fun NoteListScreen(
                     item(key = "h-space") { Spacer(Modifier.height(spacer)) }
                     if (hasPinned) {
                         item(key = "h-pin") {
-                            SectionHeader("置顶", collapsible = true, collapsed = pinnedCollapsed) {
+                            SectionHeader(S("置顶"), collapsible = true, collapsed = pinnedCollapsed) {
                                 pinnedCollapsed = !pinnedCollapsed
                             }
                         }
@@ -318,7 +319,7 @@ fun NoteListScreen(
                     }
                     if (hasPinned && others.isNotEmpty()) {
                         item(key = "h-other") {
-                            SectionHeader("其他", collapsible = false, collapsed = false) {}
+                            SectionHeader(S("其他"), collapsible = false, collapsed = false) {}
                         }
                     }
                     itemsIndexed(items = others, key = { _, n -> n.path }) { index, note ->
@@ -351,7 +352,7 @@ fun NoteListScreen(
                 subtitle = subtitle,
                 collapse = { collapse.value },
                 selectionMode = selectionMode,
-                selectionText = if (allSelected) "已选择全部项" else "已选择 ${selected.size} 项",
+                selectionText = if (allSelected) S("已选择全部项") else "已选择 ${selected.size} 项",
                 searchOpen = searchOpen,
                 query = query,
                 onQueryChange = { query = it },
@@ -387,30 +388,30 @@ fun NoteListScreen(
             FloatingActionBar(
                 actions = when {
                     inTrash -> listOf(
-                        BarAction("恢复", enabled = selected.isNotEmpty(), icon = Icons.Filled.Refresh, onClick = {
+                        BarAction(S("恢复"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Refresh, onClick = {
                             onRestore(selected)
                             exitSelection()
                         }),
-                        BarAction("彻底删除", enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askPurge = true }),
+                        BarAction(S("彻底删除"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askPurge = true }),
                     )
                     privateView -> listOf(
-                        BarAction("取消私密", enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = {
+                        BarAction(S("取消私密"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = {
                             val key = PrivateVault.key
                             if (key != null) {
                                 onSetSecret(selected, false)
                                 exitSelection()
                             }
                         }),
-                        BarAction("删除", enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askDelete = true }),
+                        BarAction(S("删除"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askDelete = true }),
                     )
                     else -> listOf(
-                        BarAction("移动", enabled = selected.isNotEmpty(), icon = Icons.AutoMirrored.Filled.ExitToApp, onClick = { moveOpen = true }),
-                        BarAction("设为私密", enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = { askSecret = true }),
-                        BarAction("置顶", enabled = selected.isNotEmpty(), icon = Icons.Filled.Star, onClick = {
+                        BarAction(S("移动"), enabled = selected.isNotEmpty(), icon = Icons.AutoMirrored.Filled.ExitToApp, onClick = { moveOpen = true }),
+                        BarAction(S("设为私密"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Lock, onClick = { askSecret = true }),
+                        BarAction(S("置顶"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Star, onClick = {
                             onPin(selected)
                             exitSelection()
                         }),
-                        BarAction("删除", enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askDelete = true }),
+                        BarAction(S("删除"), enabled = selected.isNotEmpty(), icon = Icons.Filled.Delete, onClick = { askDelete = true }),
                     )
                 },
                 modifier = Modifier
@@ -434,8 +435,8 @@ fun NoteListScreen(
     if (askDelete) {
         ConfirmDialog(
             title = "删除 ${selected.size} 篇笔记？",
-            text = "会移到「最近删除」，保留 30 天，期间都能恢复。",
-            confirmText = "删除",
+            text = S("会移到「最近删除」，保留 30 天，期间都能恢复。"),
+            confirmText = S("删除"),
             onDismiss = { askDelete = false },
             onConfirm = {
                 askDelete = false
@@ -448,8 +449,8 @@ fun NoteListScreen(
     if (askPurge) {
         ConfirmDialog(
             title = "彻底删除 ${selected.size} 篇？",
-            text = "不会进最近删除，删了就找不回来了。",
-            confirmText = "彻底删除",
+            text = S("不会进最近删除，删了就找不回来了。"),
+            confirmText = S("彻底删除"),
             onDismiss = { askPurge = false },
             onConfirm = {
                 askPurge = false
@@ -461,9 +462,9 @@ fun NoteListScreen(
 
     if (askSecret) {
         ConfirmDialog(
-            title = "设为私密？",
+            title = S("设为私密？"),
             text = "${selected.size} 篇笔记会移进「私密笔记」，之后进入私密笔记要输密码。",
-            confirmText = "设为私密",
+            confirmText = S("设为私密"),
             onDismiss = { askSecret = false },
             onConfirm = {
                 askSecret = false
@@ -514,7 +515,7 @@ private fun SectionHeader(
             ) {
                 Icon(
                     imageVector = if (collapsed) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                    contentDescription = if (collapsed) "展开置顶" else "折叠置顶",
+                    contentDescription = if (collapsed) S("展开置顶") else S("折叠置顶"),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp),
                 )
@@ -534,7 +535,7 @@ private fun MoveDialog(
         shape = RoundedCornerShape(Radius.sheet),
         containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = MaterialTheme.colorScheme.onSurface,
-        title = { Text("移动到", style = MaterialTheme.typography.titleMedium) },
+        title = { Text(S("移动到"), style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(Modifier.fillMaxWidth()) {
                 categories.forEach { entry ->
@@ -559,7 +560,7 @@ private fun MoveDialog(
             }
         },
         confirmButton = {
-            TextPill("取消", onDismiss)
+            TextPill(S("取消"), onDismiss)
         },
     )
 }
@@ -575,7 +576,7 @@ private fun FloatingNewButton(onCreate: () -> Unit) {
     ) {
         Icon(
             Icons.Filled.Add,
-            contentDescription = "新建笔记",
+            contentDescription = S("新建笔记"),
             tint = MaterialTheme.colorScheme.onPrimary,
             modifier = Modifier.size(26.dp),
         )
@@ -611,7 +612,7 @@ private fun LockedState(topInset: Dp, onUnlock: () -> Unit) {
             color = MaterialTheme.colorScheme.surface,
         ) {
             Text(
-                text = "输入密码进入私密笔记",
+                text = S("输入密码进入私密笔记"),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
             )
@@ -644,7 +645,7 @@ private fun EmptyState(topInset: Dp, text: String, lockedHint: Boolean = false) 
         )
         if (lockedHint) {
             Text(
-                text = "离开这一页或 App 进后台会自动上锁",
+                text = S("离开这一页或 App 进后台会自动上锁"),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(top = Space.xs),

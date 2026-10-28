@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.fifary"
         minSdk = 26
         targetSdk = 36
-        versionCode = 53
-        versionName = "0.9.43"
+        versionCode = 100
+        versionName = "1.0.0"
     }
 
     buildFeatures {
@@ -38,4 +38,6 @@ dependencies {
     implementation(libs.icons.extended)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    // WebDAV 要 PROPFIND/MKCOL，HttpURLConnection 只认固定那几个方法
+    implementation(libs.okhttp)
 }

@@ -14,6 +14,8 @@ enum class ViewMode { LIST, GRID }
 
 enum class SortMode { UPDATED, CREATED }
 
+enum class AppLang { SYSTEM, ZH, EN }
+
 // 一套配色 = 页面底色 + 卡片色 + 强调色，日间/夜间各一组
 @Immutable
 data class Palette(
@@ -74,6 +76,23 @@ object SettingsStore {
         private set
     var sortMode by mutableStateOf(SortMode.UPDATED)
         private set
+    var language by mutableStateOf(AppLang.SYSTEM)
+        private set
+
+    // 空 = 默认位置（内部存储）。换过位置就存绝对路径
+    var vaultPath by mutableStateOf("")
+        private set
+
+    var davUrl by mutableStateOf("")
+        private set
+    var davUser by mutableStateOf("")
+        private set
+    // shortcut: WebDAV 密码明文存在 SharedPreferences 里，拿到本机文件就能读到；
+    // 要防这个得再套一层 Keystore，等真有人拿它同步敏感内容再说
+    var davPass by mutableStateOf("")
+        private set
+    var davAuto by mutableStateOf(false)
+        private set
 
     // 只存盐和被密码包住的数据密钥，数据密钥本身解不出来就不落盘
     var secretSalt by mutableStateOf<String?>(null)
@@ -92,6 +111,13 @@ object SettingsStore {
             .getOrDefault(ViewMode.LIST)
         sortMode = runCatching { SortMode.valueOf(p.getString("sortMode", null) ?: "") }
             .getOrDefault(SortMode.UPDATED)
+        language = runCatching { AppLang.valueOf(p.getString("language", null) ?: "") }
+            .getOrDefault(AppLang.SYSTEM)
+        vaultPath = p.getString("vaultPath", "") ?: ""
+        davUrl = p.getString("davUrl", "") ?: ""
+        davUser = p.getString("davUser", "") ?: ""
+        davPass = p.getString("davPass", "") ?: ""
+        davAuto = p.getBoolean("davAuto", false)
         secretSalt = p.getString("secretSalt", null)
         secretWrapped = p.getString("secretWrapped", null)
     }
@@ -120,5 +146,28 @@ object SettingsStore {
     fun updateSortMode(mode: SortMode) {
         sortMode = mode
         prefs?.edit()?.putString("sortMode", mode.name)?.apply()
+    }
+
+    fun updateLanguage(value: AppLang) {
+        language = value
+        prefs?.edit()?.putString("language", value.name)?.apply()
+    }
+
+    fun updateVaultPath(path: String) {
+        vaultPath = path
+        prefs?.edit()?.putString("vaultPath", path)?.apply()
+    }
+
+    fun updateDav(url: String, user: String, pass: String, auto: Boolean) {
+        davUrl = url
+        davUser = user
+        davPass = pass
+        davAuto = auto
+        prefs?.edit()
+            ?.putString("davUrl", url)
+            ?.putString("davUser", user)
+            ?.putString("davPass", pass)
+            ?.putBoolean("davAuto", auto)
+            ?.apply()
     }
 }

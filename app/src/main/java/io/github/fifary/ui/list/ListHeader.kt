@@ -1,5 +1,6 @@
 package io.github.fifary.ui.list
 
+import io.github.fifary.ui.S
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -217,20 +218,20 @@ fun ListHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (selectionMode) {
-                    TextPill("取消", onCancelSelection)
+                    TextPill(S("取消"), onCancelSelection)
                     Text(
                         text = selectionText,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Center,
                     )
-                    TextPill(if (allSelected) "取消全选" else "全选", onSelectAll)
+                    TextPill(if (allSelected) S("取消全选") else S("全选"), onSelectAll)
                 } else {
                     Spacer(Modifier.weight(1f))
-                    CircleIconButton(Icons.Filled.Search, "搜索", onToggleSearch)
+                    CircleIconButton(Icons.Filled.Search, S("搜索"), onToggleSearch)
                     Spacer(Modifier.width(Space.s))
                     Box {
-                        CircleIconButton(Icons.Filled.MoreVert, "更多", onClick = { menuOpen = true })
+                        CircleIconButton(Icons.Filled.MoreVert, S("更多"), onClick = { menuOpen = true })
                         DropdownMenu(
                             expanded = menuOpen,
                             onDismissRequest = { menuOpen = false },
@@ -238,9 +239,9 @@ fun ListHeader(
                             shape = RoundedCornerShape(Radius.sheet),
                             shadowElevation = Elev.floating,
                         ) {
-                            MenuRow("编辑") { menuOpen = false; onEnterEdit() }
-                            MenuRow("设置") { menuOpen = false; onOpenSettings() }
-                            MenuRow(if (viewMode == ViewMode.LIST) "宫格模式" else "列表模式") {
+                            MenuRow(S("编辑")) { menuOpen = false; onEnterEdit() }
+                            MenuRow(S("设置")) { menuOpen = false; onOpenSettings() }
+                            MenuRow(if (viewMode == ViewMode.LIST) S("宫格模式") else S("列表模式")) {
                                 menuOpen = false
                                 onToggleView()
                             }
@@ -248,11 +249,11 @@ fun ListHeader(
                                 color = colors.outlineVariant,
                                 modifier = Modifier.padding(horizontal = Space.s, vertical = Space.xxs),
                             )
-                            MenuRow("按创建时间排序", checked = sortMode == SortMode.CREATED) {
+                            MenuRow(S("按创建时间排序"), checked = sortMode == SortMode.CREATED) {
                                 menuOpen = false
                                 onSelectSort(SortMode.CREATED)
                             }
-                            MenuRow("按修改时间排序", checked = sortMode == SortMode.UPDATED) {
+                            MenuRow(S("按修改时间排序"), checked = sortMode == SortMode.UPDATED) {
                                 menuOpen = false
                                 onSelectSort(SortMode.UPDATED)
                             }
@@ -305,7 +306,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, onClose:
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {
                     Text(
-                        text = "搜索标题和正文",
+                        text = S("搜索标题和正文"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -328,7 +329,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, onClose:
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "关闭搜索",
+                    contentDescription = S("关闭搜索"),
                     tint = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(18.dp),
                 )
@@ -362,7 +363,7 @@ private fun CategoryRow(
             onClick = onOpenCategories,
         ) { LayersGlyph() }
         Capsule(selected = folder.isEmpty(), onClick = { onSelectCategory("") }) {
-            Text("全部", style = MaterialTheme.typography.titleMedium)
+            Text(S("全部"), style = MaterialTheme.typography.titleMedium)
         }
         if (secretEnabled) {
             Capsule(
@@ -376,7 +377,7 @@ private fun CategoryRow(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(Space.xxs))
-                Text("私密", style = MaterialTheme.typography.titleMedium)
+                Text(S("私密"), style = MaterialTheme.typography.titleMedium)
             }
         }
         categories.forEach { entry ->
@@ -400,7 +401,7 @@ private fun CategoryRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.width(Space.xxs))
-            Text("最近删除", style = MaterialTheme.typography.titleMedium)
+            Text(S("最近删除"), style = MaterialTheme.typography.titleMedium)
         }
     }
 }

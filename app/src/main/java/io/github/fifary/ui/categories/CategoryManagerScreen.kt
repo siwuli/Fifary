@@ -1,5 +1,6 @@
 package io.github.fifary.ui.categories
 
+import io.github.fifary.ui.S
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -150,7 +151,7 @@ fun CategoryManagerScreen(
                         ) {
                             LayersGlyph()
                             Spacer(Modifier.width(Space.s))
-                            Text("全部笔记", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(S("全部笔记"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                             Text(
                                 text = "$totalNotes",
                                 style = MaterialTheme.typography.labelMedium,
@@ -168,7 +169,7 @@ fun CategoryManagerScreen(
 
                 item(key = "label") {
                     Text(
-                        text = "我的分组",
+                        text = S("我的分组"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = Space.xxs, top = Space.m, bottom = Space.xs),
@@ -179,7 +180,7 @@ fun CategoryManagerScreen(
                     RowGroup {
                         if (categories.isEmpty()) {
                             Text(
-                                text = "还没有分组，点右上角 + 新建",
+                                text = S("还没有分组，点右上角 + 新建"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = Space.l, vertical = Space.l),
@@ -248,7 +249,7 @@ fun CategoryManagerScreen(
                                 modifier = Modifier.size(20.dp),
                             )
                             Spacer(Modifier.width(Space.s))
-                            Text("私密笔记", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(S("私密笔记"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                             if (secretEnabled) {
                                 Text(
                                     text = "$secretCount",
@@ -278,7 +279,7 @@ fun CategoryManagerScreen(
                                 modifier = Modifier.size(20.dp),
                             )
                             Spacer(Modifier.width(Space.s))
-                            Text("最近删除", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(S("最近删除"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                             Text(
                                 text = "$trashCount",
                                 style = MaterialTheme.typography.labelMedium,
@@ -315,19 +316,19 @@ fun CategoryManagerScreen(
             FloatingActionBar(
                 actions = listOf(
                     BarAction(
-                        label = "编辑",
+                        label = S("编辑"),
                         icon = Icons.Filled.Edit,
                         enabled = selected.size == 1,
                         onClick = { renaming = categories.firstOrNull { it.path in selected } },
                     ),
                     BarAction(
-                        label = "设为私密",
+                        label = S("设为私密"),
                         icon = Icons.Filled.Lock,
                         enabled = selected.isNotEmpty(),
                         onClick = { askSecret = true },
                     ),
                     BarAction(
-                        label = "删除",
+                        label = S("删除"),
                         icon = Icons.Filled.Delete,
                         enabled = selected.isNotEmpty(),
                         onClick = { deleting = selected.toList() },
@@ -344,9 +345,9 @@ fun CategoryManagerScreen(
 
     if (creating) {
         InputDialog(
-            title = "新建分组",
-            placeholder = "分组名称",
-            confirmText = "创建",
+            title = S("新建分组"),
+            placeholder = S("分组名称"),
+            confirmText = S("创建"),
             onDismiss = { creating = false },
             onConfirm = { name ->
                 creating = false
@@ -357,9 +358,9 @@ fun CategoryManagerScreen(
 
     renaming?.let { entry ->
         InputDialog(
-            title = "重命名分组",
-            placeholder = "分组名称",
-            confirmText = "保存",
+            title = S("重命名分组"),
+            placeholder = S("分组名称"),
+            confirmText = S("保存"),
             initial = entry.name,
             onDismiss = { renaming = null },
             onConfirm = { name ->
@@ -373,8 +374,8 @@ fun CategoryManagerScreen(
     if (deleting.isNotEmpty()) {
         ConfirmDialog(
             title = "删除 ${deleting.size} 个分组？",
-            text = "分组里的笔记会移到最近删除，30 天内可以恢复。",
-            confirmText = "删除",
+            text = S("分组里的笔记会移到最近删除，30 天内可以恢复。"),
+            confirmText = S("删除"),
             onDismiss = { deleting = emptyList() },
             onConfirm = {
                 deleting.forEach(onDelete)
@@ -386,9 +387,9 @@ fun CategoryManagerScreen(
 
     if (askSecret) {
         ConfirmDialog(
-            title = "把分组设为私密笔记本？",
-            text = "分组里的笔记会加密保存，查看时要先输密码。",
-            confirmText = "设为私密",
+            title = S("把分组设为私密笔记本？"),
+            text = S("分组里的笔记会加密保存，查看时要先输密码。"),
+            confirmText = S("设为私密"),
             onDismiss = { askSecret = false },
             onConfirm = {
                 askSecret = false
@@ -441,7 +442,7 @@ private fun CategoryHeader(
             Spacer(Modifier.height(TitleTop))
             if (!editing) {
                 Text(
-                    text = "分组",
+                    text = S("分组"),
                     style = MaterialTheme.typography.headlineLarge.copy(
                         fontSize = 32.sp,
                         lineHeight = 38.sp,
@@ -477,7 +478,7 @@ private fun CategoryHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (editing) {
-                    TextPill("完成", onExitEdit)
+                    TextPill(S("完成"), onExitEdit)
                     Text(
                         text = "已选择 $selectedCount 项",
                         style = MaterialTheme.typography.titleMedium,
@@ -487,15 +488,15 @@ private fun CategoryHeader(
                     Spacer(Modifier.width(52.dp))
                 } else {
                     CircleButton(onClick = onClose) {
-                        Icon(Icons.Filled.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.Close, contentDescription = S("关闭"), modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.weight(1f))
                     CircleButton(onClick = onCreate) {
-                        Icon(Icons.Filled.Add, contentDescription = "新建分组", modifier = Modifier.size(22.dp))
+                        Icon(Icons.Filled.Add, contentDescription = S("新建分组"), modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(Space.xs))
                     CircleButton(onClick = onEnterEdit) {
-                        Icon(Icons.Filled.Edit, contentDescription = "编辑分组", modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.Edit, contentDescription = S("编辑分组"), modifier = Modifier.size(20.dp))
                     }
                 }
             }

@@ -137,6 +137,14 @@ object NotesStore {
         purgeExpiredTrash()
     }
 
+    // 换过存储位置、导入过备份、同步完都得重读一遍盘
+    fun reload(context: Context) {
+        loaded = false
+        all.clear()
+        emptyFolders.clear()
+        load(context)
+    }
+
     fun byPath(path: String): Note? = all.firstOrNull { it.path == path }
 
     // 编辑页只在点「完成」时走这里。标题就是文件名，改标题等于给文件改名；
