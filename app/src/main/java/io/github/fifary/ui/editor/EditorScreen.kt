@@ -153,6 +153,20 @@ fun EditorScreen(
         page?.evaluateJavascript(code, null)
     }
 
+    // 格式按了得有个说法：JS 找不到要改的行就回 0，用提示顶上去，不然按钮看着像坏的
+    fun fmt(code: String) {
+        val view = page
+        if (view == null) {
+            Toast.makeText(context, "编辑器还没准备好", Toast.LENGTH_SHORT).show()
+            return
+        }
+        view.evaluateJavascript(code) { r ->
+            if (r == "0") Toast.makeText(context, "先点一下要改的那一行", Toast.LENGTH_SHORT).show()
+        }
+        // 改的是 DOM，WebView 偶尔不自己重绘
+        view.invalidate()
+    }
+
     fun leave() {
         val view = page
         if (view == null) {
@@ -371,7 +385,11 @@ fun EditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(Space.xxs),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            BubbleIcon(Icons.Filled.FormatSize, "格式") { panel = Panel.FORMAT }
+                            BubbleIcon(Icons.Filled.FormatSize, "格式") {
+                                // 面板一开 WebView 就丢焦点，进来先把选区抓下来
+                                js("syncSel()")
+                                panel = Panel.FORMAT
+                            }
                             if (typing) {
                                 BubbleIcon(Icons.Filled.Checklist, "待办") { js("todo()") }
                                 BubbleIcon(Icons.Filled.Photo, "图片") {
@@ -407,54 +425,54 @@ fun EditorScreen(
 
                             // 文字样式：标题 24 / 副标题 20 / 小标题 16 半粗 / 正文 16 / 注释 14
                             PanelRow {
-                                StyleButton("标题", 24, FontWeight.SemiBold) { js("block('h1')") }
-                                StyleButton("副标题", 20, FontWeight.SemiBold) { js("block('h2')") }
-                                StyleButton("小标题", 16, FontWeight.SemiBold) { js("block('h3')") }
-                                StyleButton("正文", 16, FontWeight.Normal) { js("block('p')") }
-                                StyleButton("注释", 14, FontWeight.Normal) { js("block('blockquote')") }
+                                StyleButton("标题", 24, FontWeight.SemiBold) { fmt("block('h1')") }
+                                StyleButton("副标题", 20, FontWeight.SemiBold) { fmt("block('h2')") }
+                                StyleButton("小标题", 16, FontWeight.SemiBold) { fmt("block('h3')") }
+                                StyleButton("正文", 16, FontWeight.Normal) { fmt("block('p')") }
+                                StyleButton("注释", 14, FontWeight.Normal) { fmt("block('blockquote')") }
                             }
 
                             PanelRow {
-                                BubbleIcon(Icons.Filled.FormatBold, "加粗", box = 44.dp) { js("wrapTag('b')") }
-                                BubbleIcon(Icons.Filled.FormatItalic, "斜体", box = 44.dp) { js("wrapTag('i')") }
+                                BubbleIcon(Icons.Filled.FormatBold, "加粗", box = 44.dp) { fmt("wrapTag('b')") }
+                                BubbleIcon(Icons.Filled.FormatItalic, "斜体", box = 44.dp) { fmt("wrapTag('i')") }
                                 BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线", box = 44.dp) {
-                                    js("wrapTag('s')")
+                                    fmt("wrapTag('s')")
                                 }
                                 BubbleIcon(Icons.Filled.FormatUnderlined, "下划线", box = 44.dp) {
-                                    js("wrapTag('u')")
+                                    fmt("wrapTag('u')")
                                 }
-                                BubbleIcon(Icons.Filled.Code, "代码", box = 44.dp) { js("code()") }
+                                BubbleIcon(Icons.Filled.Code, "代码", box = 44.dp) { fmt("code()") }
                             }
 
                             PanelRow {
                                 BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表", box = 44.dp) {
-                                    js("list(false)")
+                                    fmt("list(false)")
                                 }
                                 BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表", box = 44.dp) {
-                                    js("list(true)")
+                                    fmt("list(true)")
                                 }
-                                BubbleIcon(Icons.Filled.Checklist, "待办", box = 44.dp) { js("todo()") }
+                                BubbleIcon(Icons.Filled.Checklist, "待办", box = 44.dp) { fmt("todo()") }
                                 BubbleIcon(Icons.Filled.FormatIndentIncrease, "增加缩进", box = 44.dp) {
-                                    js("indent(32)")
+                                    fmt("indent(32)")
                                 }
                                 BubbleIcon(Icons.Filled.FormatIndentDecrease, "减少缩进", box = 44.dp) {
-                                    js("indent(-32)")
+                                    fmt("indent(-32)")
                                 }
                                 BubbleIcon(Icons.Filled.FormatAlignCenter, "居中", box = 44.dp) {
-                                    js("align('center')")
+                                    fmt("align('center')")
                                 }
                                 BubbleIcon(Icons.Filled.FormatAlignRight, "右对齐", box = 44.dp) {
-                                    js("align('right')")
+                                    fmt("align('right')")
                                 }
                             }
 
                             PanelRow {
-                                BubbleIcon(Icons.Filled.HorizontalRule, "分割线", box = 44.dp) { js("insertHr()") }
+                                BubbleIcon(Icons.Filled.HorizontalRule, "分割线", box = 44.dp) { fmt("insertHr()") }
                                 // 参考 btn_text_size：字号
-                                TextChip("14") { js("setSize(14)") }
-                                TextChip("16") { js("setSize(16)") }
-                                TextChip("20") { js("setSize(20)") }
-                                TextChip("24") { js("setSize(24)") }
+                                TextChip("14") { fmt("setSize(14)") }
+                                TextChip("16") { fmt("setSize(16)") }
+                                TextChip("20") { fmt("setSize(20)") }
+                                TextChip("24") { fmt("setSize(24)") }
                             }
                         }
 

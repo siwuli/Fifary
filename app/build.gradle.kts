@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.fifary"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.9.5"
+        versionCode = 16
+        versionName = "0.9.6"
     }
 
     buildFeatures {

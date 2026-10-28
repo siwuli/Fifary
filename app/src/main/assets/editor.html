@@ -294,6 +294,17 @@ function redo() {
 // 点工具栏时 WebView 已经失焦，选区得自己记着；失焦后选区会塌到 body，那种不算数
 var saved = null, lastBlk = null;
 
+// 打开格式面板时 WebView 还拿着焦点，这一下先把选区抓下来；事件偶尔不来，就靠这里补
+function syncSel() {
+  var s = window.getSelection();
+  if (!s || !s.rangeCount || !s.anchorNode || !document.body.contains(s.anchorNode)) return 0;
+  var b = blockOf(s.anchorNode);
+  if (!b) return 0;
+  lastBlk = b;
+  saved = s.getRangeAt(0).cloneRange();
+  return 1;
+}
+
 document.addEventListener('selectionchange', function () {
   var s = window.getSelection();
   if (!s.rangeCount || !s.anchorNode || !document.body.contains(s.anchorNode)) return;
@@ -303,6 +314,11 @@ document.addEventListener('selectionchange', function () {
   saved = s.getRangeAt(0).cloneRange();
 });
 
+// 面板一开正文只剩一小条，改完那一行要自己滚进来，不然看着像没改
+function see(el) {
+  if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+
 function caretIn(el) {
   var r = document.createRange();
   r.selectNodeContents(el);
@@ -311,6 +327,7 @@ function caretIn(el) {
   s.removeAllRanges();
   s.addRange(r);
   saved = r.cloneRange();
+  see(el);
 }
 
 // WebView 失焦后 execCommand 一律失效，所以格式全走 DOM，不再指望浏览器
@@ -389,17 +406,20 @@ function setTag(blk, tag) {
 }
 
 function block(tag) {
+  syncSel();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
-    for (var i = 0; i < picked.length; i++) setTag(picked[i], tag);
+    for (var i = 0; i < picked.length; i++) picked[i] = setTag(picked[i], tag);
     syncTodos();
-    return;
+    see(picked[0]);
+    return 1;
   }
   var blk = ensureBlock();
-  if (!blk) return;
+  if (!blk) return 0;
   var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
   if (blk.nodeName !== want) caretIn(setTag(blk, tag));
   syncTodos();
+  return 1;
 }
 
 // 再点一次同样的样式就拆掉
@@ -410,6 +430,7 @@ function unwrap(el) {
 }
 
 function wrapTag(tag) {
+  syncSel();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   // 跨行选中就整行逐块处理，等于批量调整
   if (picked.length > 1) {
@@ -417,19 +438,20 @@ function wrapTag(tag) {
     for (var i = 0; i < picked.length; i++) {
       if (on) wrapWhole(picked[i], tag); else unwrapAll(picked[i], tag);
     }
-    return;
+    see(picked[0]);
+    return 1;
   }
   var blk = ensureBlock();
-  if (!blk) return;
+  if (!blk) return 0;
   var node = saved ? saved.startContainer : null;
   var up = node && node.nodeType === 1 ? node : node && node.parentNode;
   var host = up && up.closest ? up.closest(tag) : null;
-  if (host && blk.contains(host)) { unwrap(host); return; }
+  if (host && blk.contains(host)) { unwrap(host); return 1; }
   var range = saved && !saved.collapsed && blk.contains(saved.startContainer) ? saved : null;
   if (range) {
     var el = document.createElement(tag);
     el.appendChild(range.extractContents());
-    if (!el.firstChild) return;
+    if (!el.firstChild) return 0;
     range.insertNode(el);
     caretIn(el);
   } else {
@@ -437,33 +459,41 @@ function wrapTag(tag) {
     var whole = wrapWhole(blk, tag);
     if (whole) caretIn(whole);
   }
+  return 1;
 }
 
 function styleBlock(prop, value) {
   var blk = ensureBlock();
-  if (blk) blk.style[prop] = value;
+  if (!blk) return 0;
+  blk.style[prop] = value;
+  see(blk);
+  return 1;
 }
 
 function setSize(px) {
+  syncSel();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
     for (var i = 0; i < picked.length; i++) picked[i].style.fontSize = px + 'px';
-    return;
+    see(picked[0]);
+    return 1;
   }
-  if (!saved || saved.collapsed) { styleBlock('fontSize', px + 'px'); return; }
+  if (!saved || saved.collapsed) return styleBlock('fontSize', px + 'px');
   var el = document.createElement('span');
   el.style.fontSize = px + 'px';
   el.appendChild(saved.extractContents());
   saved.insertNode(el);
   saved = document.createRange();
   saved.selectNodeContents(el);
+  return 1;
 }
 
-function code() { wrapTag('code'); }
+function code() { return wrapTag('code'); }
 
 function list(ordered) {
+  syncSel();
   var blk = ensureBlock();
-  if (!blk) return;
+  if (!blk) return 0;
   var tag = ordered ? 'OL' : 'UL';
   if (blk.nodeName === 'LI') {
     var host = blk.parentNode;
@@ -519,6 +549,7 @@ function syncTodos() {
 }
 
 function todo() {
+  syncSel();
   var li = currentLi();
   if (li) {
     var ul = li.parentNode;
@@ -628,13 +659,15 @@ function applySlash(kind) {
   block(kind === 'quote' ? 'blockquote' : kind);
 }
 
-function align(dir) { styleBlock('textAlign', dir); }
+function align(dir) { return styleBlock('textAlign', dir); }
 
 function indent(delta) {
+  syncSel();
   var blk = selBlock();
-  if (!blk) return;
+  if (!blk) return 0;
   var cur = parseInt(blk.style.marginLeft || '0', 10);
   blk.style.marginLeft = Math.max(0, cur + delta) + 'px';
+  return 1;
 }
 
 function buildMenu() {
