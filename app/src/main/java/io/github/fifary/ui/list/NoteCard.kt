@@ -62,7 +62,7 @@ private const val MINUTE = 60_000L
 // 卡片上的时间是「现在 - 最后修改」的差；列表里有个 20 秒走一次的钟推着它重新算
 internal var clockNow by mutableStateOf(System.currentTimeMillis())
 
-// 说法照参考便签（strings 里就是 %d 分钟前 / 今天 %s / 昨天 %s / yyyy年M月d日 EEEE）：
+// 时间说法：%d 分钟前 / 今天 %s / 昨天 %s / yyyy年M月d日 EEEE；
 // 1 分钟内「刚刚」，1 小时内「N 分钟前」，今天/昨天带时间，再老给年月日 + 星期
 internal fun timeLabel(at: Long): String {
     val now = clockNow
@@ -213,7 +213,7 @@ internal fun noteLines(body: String): List<String> =
         .filter { it.isNotEmpty() && it != "---" }
         .toList()
 
-// 笔记的名字就是正文第一行（参考便签没有单独的标题），预览从第二行接着。
+// 笔记的名字就是正文第一行（没有单独的标题字段），预览从第二行接着。
 // 卡片标题永远跟着正文第一行走：文件里第一行改了，外面就得跟着变
 internal fun titleOf(body: String): String = noteLines(body).firstOrNull().orEmpty()
 

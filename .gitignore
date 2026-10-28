@@ -12,3 +12,6 @@ _*.js
 _*.txt
 _*.py
 _davroot/
+# ????????
+keystore/
+keystore.properties

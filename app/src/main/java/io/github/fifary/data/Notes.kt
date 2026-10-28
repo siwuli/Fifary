@@ -71,7 +71,7 @@ object NotesStore {
         ),
         Note(
             path = "$DEFAULT/新想法.md",
-            body = "没选分组的笔记默认放这里，和 ColorOS 便签的「默认」一样。",
+            body = "没选分组的笔记默认放这里。",
             createdAt = now - 5_000_000,
             updatedAt = now - 5_000_000,
         ),
@@ -154,7 +154,7 @@ object NotesStore {
         name.isBlank() || name == UNTITLED || name.startsWith("$UNTITLED ")
 
     // 第一行可能是一整句话：落盘的名字截到 40 字，别让文件名超长写不进去。
-    // 重名不管——两条笔记可以同名，后面用「 2」错开（参考便签一条一个 id，本来就能重名）
+    // 重名不管——两条笔记可以同名，后面用「 2」错开
     private fun fileName(title: String): String {
         var s = title.trim().replace("/", " ").take(40)
         if (s.lastOrNull()?.isHighSurrogate() == true) s = s.dropLast(1)

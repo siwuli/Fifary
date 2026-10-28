@@ -28,7 +28,7 @@
   }
   /* 行高显式给到每个块：光靠 body 的 font 简写，WebView 画光标时会用另一套行高，跟文字错开 */
   h1, h2, h3, p, blockquote, li, div, ul, ol { line-height: 1.65; }
-  /* 第一行就是标题位：空着就给灰提示（参考便签的占位色 rgba(0,0,0,.3)、不带粗体），
+  /* 第一行就是标题位：空着就给灰提示（占位色 rgba(0,0,0,.3)、不带粗体），
      提示绝对定位，光标才不会被顶到提示文字后面 */
   body > .ph { position: relative; }
   body > .ph::before { content: "标题"; position: absolute; left: 0; top: 0; color: var(--ph); font-weight: 400; }
@@ -466,7 +466,7 @@ document.body.addEventListener('keydown', function (e) {
     snap();
     return;
   }
-  // 第一行空着的标题位：在下一行行首退格就把它删掉，整篇变成普通正文（参考便签删得掉标题）
+  // 第一行空着的标题位：在下一行行首退格就把它删掉，整篇变成普通正文
   var blk = blockOf(host);
   if (!blk || !startOf(blk, r)) return;
   var prev = blk.previousElementSibling;
@@ -482,7 +482,7 @@ document.body.addEventListener('keydown', function (e) {
   snap();
 });
 
-// 空着的一行列表/待办再回车：这一项退出列表回正文（参考便签一样）。
+// 空着的一行列表/待办再回车：这一项退出列表回正文。
 // 交给浏览器就只会一直加空项，列表永远出不来
 document.body.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter' || e.shiftKey) return;
@@ -634,7 +634,7 @@ function keepEmpty() {
     tail.appendChild(document.createElement('br'));
     document.body.appendChild(tail);
   }
-  // 第一行就是标题位：只要它空着就留着灰提示，正文有字也一样（参考便签的标题块空着就显示占位）
+  // 第一行就是标题位：只要它空着就留着灰提示，正文有字也一样
   var ph = document.querySelector('.ph');
   if (ph) ph.classList.remove('ph');
   var head = document.body.firstElementChild;

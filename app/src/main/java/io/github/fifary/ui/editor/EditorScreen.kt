@@ -222,7 +222,7 @@ fun EditorScreen(
             return
         }
         // 笔记没有单独的标题：正文第一行就是标题，外面（列表卡片、文件名）都跟着它走。
-        // 重名照存不误——文件重名由存储层自己错开，跟参考便签一样两条同名笔记能同时存在
+        // 重名照存不误——文件重名由存储层自己错开，两条同名笔记能同时存在
         readMd { md -> if (note == null && md.isBlank()) onDiscard() else onSave(titleOf(md), md) }
     }
 

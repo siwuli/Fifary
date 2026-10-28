@@ -1,8 +1,8 @@
-﻿# Fifary
+# Fifary
 
 一个纯本地的 Android Markdown 笔记 App。不登录、不上传、不配置服务器也能完整使用；笔记就是硬盘上的 `.md` 文件，目录就是分组。
 
-参考 [ColorOS 便签](https://www.coloros.com/) 的交互和视觉重做，纯 Kotlin + Jetpack Compose，没有数据库。
+纯 Kotlin + Jetpack Compose，没有数据库、没有账号体系。
 
 ## 截图
 
