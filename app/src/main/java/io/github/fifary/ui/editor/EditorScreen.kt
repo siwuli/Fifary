@@ -1,10 +1,8 @@
 package io.github.fifary.ui.editor
 
 import android.content.Context
-import android.content.Intent
 import android.media.MediaRecorder
 import android.os.Build
-import android.speech.RecognizerIntent
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.Toast
@@ -80,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -315,19 +314,8 @@ fun EditorScreen(
         }
     }
 
-    // 参考 app 气泡里的麦克风是「语音输入」：说的话直接变成正文
-    val talk = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!heard.isNullOrBlank()) fmt("insertText(${JSONObject.quote(heard)})")
-    }
-
-    fun dictate() {
-        val ask = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-        runCatching { talk.launch(ask) }
-    }
-
+    // 参考 app 气泡里的麦克风是「语音输入」，但那要靠系统的识别引擎：手机上没装/装的是个
+    // 只会转写不回调结果的界面时，按下去等于没反应。改成 App 自己录，录完插进正文能点开播
     BackHandler { leave() }
 
     // 输入法一冒头气泡就长开，缩回去就只剩「格式」「插入」
@@ -417,12 +405,25 @@ fun EditorScreen(
                                 js("syncSel()")
                                 panel = Panel.FORMAT
                             }
-                            if (typing) {
+                            if (typing || recorder != null) {
                                 BubbleIcon(Icons.Filled.Checklist, "待办") { fmt("todo()") }
                                 BubbleIcon(Icons.Filled.Photo, "图片") {
                                     pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
-                                BubbleIcon(Icons.Filled.Mic, "语音输入") { dictate() }
+                                // 录音走 App 自己的录制：系统的「语音输入」能不能用全看设备装了什么，
+                                // 实测这台机器上 ACTION_RECOGNIZE_SPEECH 只会去开一个转写界面，回来永远是空结果
+                                val recording = recorder != null
+                                BubbleIcon(
+                                    icon = if (recording) Icons.Filled.Stop else Icons.Filled.Mic,
+                                    label = if (recording) "录音中 ${recordSec}s" else "录音",
+                                    tint = if (recording) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                ) {
+                                    if (recording) {
+                                        stopRecord()
+                                    } else {
+                                        askMic.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
                             }
                             BubbleIcon(Icons.Filled.Add, "插入") { panel = Panel.INSERT }
                         }
@@ -628,7 +629,13 @@ private fun PanelRow(content: @Composable RowScope.() -> Unit) {
 }
 
 @Composable
-private fun BubbleIcon(icon: ImageVector, label: String, box: Dp = 40.dp, onClick: () -> Unit) {
+private fun BubbleIcon(
+    icon: ImageVector,
+    label: String,
+    box: Dp = 40.dp,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier
             .size(box)
@@ -639,7 +646,7 @@ private fun BubbleIcon(icon: ImageVector, label: String, box: Dp = 40.dp, onClic
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = tint,
             modifier = Modifier.size(24.dp),
         )
     }
