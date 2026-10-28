@@ -35,7 +35,13 @@ object Vault {
     fun save(note: Note) {
         val file = fileFor(note.path) ?: return
         file.parentFile?.mkdirs()
-        file.writeText(encode(note))
+        // 先写临时文件再改名：写到一半被杀掉，旧笔记还在（.md.tmp 不会被当成笔记读）
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(encode(note))
+        if (!tmp.renameTo(file)) {
+            file.writeText(encode(note))
+            tmp.delete()
+        }
     }
 
     fun remove(path: String) {
@@ -68,7 +74,8 @@ object Vault {
 
     private fun fileFor(path: String): File? {
         val dir = root ?: return null
-        if (path.isEmpty() || path.contains("..")) return null
+        // 只挡真正会跳出 vault 的路径：标题里带「..」（比如「第1..3章」）得能存
+        if (path.isEmpty() || path.startsWith("/") || path.split('/').any { it == ".." }) return null
         return File(dir, path)
     }
 

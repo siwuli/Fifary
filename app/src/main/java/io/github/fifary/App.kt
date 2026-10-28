@@ -1,8 +1,14 @@
 package io.github.fifary
 
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -90,6 +96,18 @@ fun FifaryApp() {
                 is Screen.Editor -> {
                     val note = NotesStore.byPath(screen.path)
                         ?.let { n -> if (n.secret) n.copy(body = PrivateVault.plain(n)) else n }
+                    // 新笔记第一次落盘后就有了自己的路径，之后（包括切后台自动存的）都得用新路径，
+                    // 不然会再存出一条「xxx 2」的重复笔记
+                    var path by remember(screen.path) { mutableStateOf(screen.path) }
+                    val context = LocalContext.current
+                    val stash: (String, String) -> Unit = { title, body ->
+                        // 密码已经清掉（切过后台）时不能存私密笔记：存了就把明文写进密文文件，笔记再也解不开
+                        if (note?.secret == true && !PrivateVault.unlocked) {
+                            Toast.makeText(context, "私密笔记已锁定，这次改动没保存", Toast.LENGTH_SHORT).show()
+                        } else {
+                            path = NotesStore.save(path, screen.folder, title, body)
+                        }
+                    }
                     // 换笔记时必须重开编辑页：页面槽位会被复用，WebView 里还是上一条的正文，
                     // 点完成就把上一条的内容写进这一条（真把用户笔记覆盖过）
                     key(screen.path) {
@@ -97,8 +115,9 @@ fun FifaryApp() {
                             note = note,
                             folder = note?.folder ?: screen.folder,
                             onDiscard = { navigator.back() },
+                            onStash = stash,
                             onSave = { title, body ->
-                                NotesStore.save(screen.path, screen.folder, title, body)
+                                stash(title, body)
                                 navigator.back()
                             },
                         )

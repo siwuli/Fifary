@@ -163,7 +163,7 @@ object NotesStore {
         val existing = byPath(path)
 
         if (existing == null) {
-            val secret = folder == PRIVATE
+            val secret = folder == PRIVATE && key != null
             val target = if (folder.isEmpty() || folder == PRIVATE || folder == TRASH) DEFAULT else folder
             val fresh = uniquePath(target, name, null)
             val note = Note(
@@ -178,12 +178,24 @@ object NotesStore {
             return fresh
         }
 
-        val stored = if (existing.secret && key != null) Secret.encrypt(key, body) else body
+        // 私密笔记这会儿可能是锁着的（切过后台、密钥已经清了）：宁可这次改动不写进文件，
+        // 也不能把明文塞进一个标了 secret 的文件——那篇笔记就再也解不开了
+        val stored = when {
+            !existing.secret -> body
+            key == null -> existing.body
+            else -> Secret.encrypt(key, body)
+        }
         val fresh = uniquePath(existing.folder, name, existing.path)
         // 只是打开看了一眼、什么都没改：不写盘也不动最后修改时间，
         // 不然列表上的时间一进出笔记就变成「刚刚」。
-        // 结尾的换行不算改（读回来带不带它取决于文件怎么写的）
-        if (fresh == existing.path && stored.trimEnd('\n') == existing.body.trimEnd('\n')) return fresh
+        // 结尾的换行不算改（读回来带不带它取决于文件怎么写的）；
+        // 私密笔记每次都重新加密、密文必然不同，只能拿明文比
+        val untouched = when {
+            !existing.secret -> stored.trimEnd('\n') == existing.body.trimEnd('\n')
+            key == null -> true
+            else -> Secret.decrypt(key, existing.body)?.trimEnd('\n') == body.trimEnd('\n')
+        }
+        if (fresh == existing.path && untouched) return fresh
         if (fresh != existing.path) Vault.move(existing.path, fresh)
         val at = all.indexOfFirst { it.path == existing.path }
         if (at >= 0) {
@@ -333,7 +345,9 @@ object NotesStore {
         val hit = expand(paths).map { it.path }.toSet()
         all.replaceAll { note ->
             if (note.path in hit && note.secret) {
-                note.copy(body = Secret.decrypt(key, note.body) ?: note.body, secret = false)
+                // 解不开就让它保持私密：把密文当正文留下来等于毁掉这篇笔记
+                val plain = Secret.decrypt(key, note.body)
+                if (plain == null) note else note.copy(body = plain, secret = false)
             } else {
                 note
             }

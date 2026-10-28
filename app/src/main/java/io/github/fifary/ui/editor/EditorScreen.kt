@@ -76,6 +76,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +85,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -118,6 +122,8 @@ fun EditorScreen(
     folder: String,
     onDiscard: () -> Unit,
     onSave: (title: String, body: String) -> Unit,
+    // 切后台时先把正文落盘，不退出页面；不落盘的话打完字被系统杀掉就全没了
+    onStash: (title: String, body: String) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val initial = remember(note?.path) { note?.body.orEmpty() }
@@ -156,8 +162,16 @@ fun EditorScreen(
         }
     }
 
+    // 录到一半就走了：停下、释放，没插进正文的那个文件删掉，不然 vault 里全是没人用的录音
     DisposableEffect(Unit) {
-        onDispose { recorder?.release() }
+        onDispose {
+            val r = recorder
+            if (r != null) {
+                runCatching { r.stop() }
+                r.release()
+                recordFile?.delete()
+            }
+        }
     }
 
     fun js(code: String) {
@@ -186,22 +200,37 @@ fun EditorScreen(
         view.invalidate()
     }
 
-    fun leave() {
-        val view = page
-        if (view == null) {
-            onDiscard()
-            return
-        }
-        // 笔记没有单独的标题：正文第一行就是标题，外面（列表卡片、文件名）都跟着它走。
-        // 重名照存不误——文件重名由存储层自己错开，跟参考便签一样两条同名笔记能同时存在
+    // 正文只在 WebView 里，取出来是异步的：存盘和切后台存盘都走这里
+    fun readMd(after: (String) -> Unit) {
+        val view = page ?: return
         view.evaluateJavascript("getMd()") { json ->
             val md = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
             if (md == null) {
                 Toast.makeText(context, "没能取出正文，再点一次完成", Toast.LENGTH_SHORT).show()
                 return@evaluateJavascript
             }
-            if (note == null && md.isBlank()) onDiscard() else onSave(titleOf(md), md)
+            after(md)
         }
+    }
+
+    fun leave() {
+        if (page == null) {
+            onDiscard()
+            return
+        }
+        // 笔记没有单独的标题：正文第一行就是标题，外面（列表卡片、文件名）都跟着它走。
+        // 重名照存不误——文件重名由存储层自己错开，跟参考便签一样两条同名笔记能同时存在
+        readMd { md -> if (note == null && md.isBlank()) onDiscard() else onSave(titleOf(md), md) }
+    }
+
+    val stashNow by rememberUpdatedState(onStash)
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) readMd { md -> if (md.isNotBlank()) stashNow(titleOf(md), md) }
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
     }
 
     fun startRecord() {

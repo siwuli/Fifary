@@ -45,5 +45,7 @@ fun RichBody(
                 loadDataWithBaseURL(base, html, "text/html", "utf-8", null)
             }
         },
+        // 一页一个 WebView，不销毁的话开几十条笔记内存就堆起来了
+        onRelease = { it.destroy() },
     )
 }

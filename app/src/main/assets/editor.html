@@ -83,7 +83,8 @@ function listRun(L, cur) {
   while (cur.i < L.length) {
     var raw = L[cur.i], t = raw.trim();
     if (t === '') { cur.i++; continue; }
-    var m = t.match(/^([-*+]|\d+\.)\s+(.*)$/);
+    // 只有标记没有内容也算一项（回车新起的那一行），不然它会变成正文里一个「-」
+    var m = t.match(/^([-*+]|\d+\.)(?:\s+(.*))?$/);
     if (!m) break;
     var ind = raw.length - raw.replace(/^[ \t]+/, '').length;
     var tag = /^\d+\.$/.test(m[1]) ? 'ol' : 'ul';
@@ -106,7 +107,7 @@ function listRun(L, cur) {
         out += '</li>';
       }
     }
-    out += '<li>' + inline(m[2]);
+    out += '<li>' + inline(m[2] || '');
     cur.i++;
   }
   while (stack.length) closeOne();
@@ -136,7 +137,7 @@ function mdToHtml(md) {
     }
     if (/^>\s?/.test(t)) { out.push('<blockquote>' + inline(t.replace(/^>\s?/, '')) + '</blockquote>'); cur.i++; continue; }
     if (/^[-*]\s+\[[ xX]\]\s*/.test(t)) { out.push(todoRun(L, cur)); continue; }
-    if (/^([-*+]|\d+\.)\s+/.test(t)) { out.push(listRun(L, cur)); continue; }
+    if (/^([-*+]|\d+\.)(\s+.*)?$/.test(t)) { out.push(listRun(L, cur)); continue; }
     out.push('<p>' + inline(t) + '</p>');
     cur.i++;
   }
@@ -273,6 +274,8 @@ function htmlToMd() {
     if (tag === 'TABLE') { lines.push(el.outerHTML); continue; }
     if (el.getAttribute('style')) { lines.push(el.outerHTML); continue; }
     var text = clean(ser(el));
+    // 空引用存成「>」：存成空行的话读回来就变成普通段落了
+    if (tag === 'BLOCKQUOTE' && text === '') { lines.push('>'); continue; }
     // 空段落要留成空行，不然回车敲出来的空行一存就没；结尾的空行不用留（作者看不见）
     if (text === '') { lines.push(''); continue; }
     if (tag === 'H1') lines.push('# ' + text);
@@ -302,7 +305,9 @@ function setMd(md) {
   var head = document.body.firstElementChild;
   // 第一行空着（或者整篇空）就是标题位：用「标题」格式顶着，空着才有灰提示
   if (!head) seedTitle();
-  else if (!head.textContent.trim() && !head.querySelector('img,hr,table,input,.player')) {
+  // 只把空段落当标题位：第一行要是空列表/空引用，那是内容，不能换成标题
+  else if (/^(P|DIV|H1|H2|H3)$/.test(head.nodeName) && !head.textContent.trim() &&
+    !head.querySelector('img,hr,table,input,.player')) {
     var h = document.createElement('h1');
     h.appendChild(document.createElement('br'));
     document.body.replaceChild(h, head);
