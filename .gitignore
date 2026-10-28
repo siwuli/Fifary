@@ -4,7 +4,8 @@ build/
 local.properties
 *.log
 .idea/
-_smoke.png
 _*.png
 _*.xml
 _*.md
+_*.html
+_*.js
