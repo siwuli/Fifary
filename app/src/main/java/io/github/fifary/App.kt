@@ -2,6 +2,7 @@ package io.github.fifary
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -89,15 +90,19 @@ fun FifaryApp() {
                 is Screen.Editor -> {
                     val note = NotesStore.byPath(screen.path)
                         ?.let { n -> if (n.secret) n.copy(body = PrivateVault.plain(n)) else n }
-                    EditorScreen(
-                        note = note,
-                        folder = note?.folder ?: screen.folder,
-                        onDiscard = { navigator.back() },
-                        onSave = { title, body ->
-                            NotesStore.save(screen.path, screen.folder, title, body)
-                            navigator.back()
-                        },
-                    )
+                    // 换笔记时必须重开编辑页：页面槽位会被复用，WebView 里还是上一条的正文，
+                    // 点完成就把上一条的内容写进这一条（真把用户笔记覆盖过）
+                    key(screen.path) {
+                        EditorScreen(
+                            note = note,
+                            folder = note?.folder ?: screen.folder,
+                            onDiscard = { navigator.back() },
+                            onSave = { title, body ->
+                                NotesStore.save(screen.path, screen.folder, title, body)
+                                navigator.back()
+                            },
+                        )
+                    }
                 }
 
                 Screen.Categories -> CategoryManagerScreen(

@@ -168,12 +168,17 @@ fun NoteCard(
     }
 }
 
-// 卡片预览去掉 Markdown 噪音（井号、引用符、列表符、代码围栏）
+// 卡片预览去掉 Markdown 噪音（井号、引用符、列表符、代码围栏、内嵌 HTML 标签）
 internal fun previewOf(body: String): String =
     body.lineSequence()
         .map { it.trim() }
         .filter { it.isNotEmpty() && !it.startsWith("```") }
-        .map { it.trimStart('#', '>', '-', '*', ' ', '\t') }
+        .map { it.replace(TAG, "") }
+        .map { it.trimStart('#', '>', '-', '*', ' ', '\t').replace(BOX, "") }
+        .map { it.replace("**", "").replace("~~", "").replace("`", "") }
         .filter { it.isNotEmpty() }
         .joinToString(" ")
         .take(160)
+
+private val TAG = Regex("<[^>]+>")
+private val BOX = Regex("^\\[[ xX]\\]\\s*")

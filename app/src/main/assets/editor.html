@@ -219,8 +219,18 @@ function listMd(el, depth, ordered) {
   return lines;
 }
 
+// 勾选状态只是 DOM 属性，存盘/存历史前先写回 checked 属性，不然一存就丢
+function syncBoxes() {
+  var boxes = document.querySelectorAll('ul.todo input[type=checkbox]');
+  for (var b = 0; b < boxes.length; b++) {
+    if (boxes[b].checked) boxes[b].setAttribute('checked', '');
+    else boxes[b].removeAttribute('checked');
+  }
+}
+
 function htmlToMd() {
   wrapBare();
+  syncBoxes();
   var lines = [], kids = document.body.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
@@ -228,14 +238,23 @@ function htmlToMd() {
     var tag = el.nodeName;
     if (tag === 'HR') { lines.push('---'); continue; }
     if (tag === 'IMG') { lines.push('![](' + el.getAttribute('src') + ')'); continue; }
-    if (tag === 'UL' && el.className.indexOf('todo') >= 0) {
-      for (var j = 0; j < el.children.length; j++) {
-        var li = el.children[j], box = li.querySelector('input');
-        lines.push((box && box.checked ? '- [x] ' : '- [ ] ') + clean(ser(li)));
+    if (tag === 'UL' || tag === 'OL') {
+      // 列表项上的缩进/字号 markdown 没有对应写法，整张列表按 HTML 存，不然一存就丢
+      var styled = !!el.getAttribute('style');
+      for (var k = 0; k < el.children.length && !styled; k++) {
+        if (el.children[k].getAttribute('style')) styled = true;
       }
+      if (styled) { lines.push(el.outerHTML); continue; }
+      if (tag === 'UL' && el.className.indexOf('todo') >= 0) {
+        for (var j = 0; j < el.children.length; j++) {
+          var li = el.children[j], box = li.querySelector('input');
+          lines.push((box && box.checked ? '- [x] ' : '- [ ] ') + clean(ser(li)));
+        }
+        continue;
+      }
+      lines = lines.concat(listMd(el, 0, tag === 'OL'));
       continue;
     }
-    if (tag === 'UL' || tag === 'OL') { lines = lines.concat(listMd(el, 0, tag === 'OL')); continue; }
     if (tag === 'TABLE') { lines.push(el.outerHTML); continue; }
     if (el.getAttribute('style')) { lines.push(el.outerHTML); continue; }
     var text = clean(ser(el));
@@ -263,12 +282,7 @@ function getMd() { return htmlToMd(); }
 var hist = [], at = -1, pending = 0;
 
 function snap() {
-  // 勾选状态是属性之外的，先写回属性，否则撤销一次就把勾抹了
-  var boxes = document.querySelectorAll('ul.todo input[type=checkbox]');
-  for (var b = 0; b < boxes.length; b++) {
-    if (boxes[b].checked) boxes[b].setAttribute('checked', '');
-    else boxes[b].removeAttribute('checked');
-  }
+  syncBoxes();
   var html = document.body.innerHTML;
   if (at >= 0 && hist[at] === html) return;
   hist = hist.slice(0, at + 1);
@@ -482,17 +496,12 @@ function unwrapAll(blk, tag) {
 function setTag(blk, tag) {
   var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
   if (blk.nodeName === want) return blk;
+  if (blk.nodeName === 'LI') { // 列表项先拆成段落，再换标签，位置才不会跑到整张列表后面
+    return setTag(lift(blk), tag);
+  }
   var el = document.createElement(tag);
   while (blk.firstChild) el.appendChild(blk.firstChild);
-  if (blk.nodeName === 'LI') {
-    // 列表项换成标题得先搬出列表，否则 <h1> 会留在 <ul> 里
-    var list = blk.parentNode;
-    list.parentNode.insertBefore(el, list.nextSibling);
-    list.removeChild(blk);
-    if (!list.children.length) list.parentNode.removeChild(list);
-  } else {
-    blk.parentNode.replaceChild(el, blk);
-  }
+  blk.parentNode.replaceChild(el, blk);
   return el;
 }
 
@@ -526,13 +535,14 @@ function wrapTag(tag) {
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   // 跨行选中就整行逐块处理，等于批量调整
   if (picked.length > 1) {
-    // 每一块都已经有了才当"取消"；只要有一块没有，这次是"加上"
+    // 全都带着才整批取消，否则给缺的那些补上；已经带着的不重复套，不然会变成粗上加粗
     var on = true;
     for (var i = 0; i < picked.length; i++) {
       if (!picked[i].querySelector(tag)) { on = false; break; }
     }
-    for (var i = 0; i < picked.length; i++) {
-      if (on) unwrapAll(picked[i], tag); else wrapWhole(picked[i], tag);
+    for (var j = 0; j < picked.length; j++) {
+      if (on) unwrapAll(picked[j], tag);
+      else if (!picked[j].querySelector(tag)) wrapWhole(picked[j], tag);
     }
     reselect(picked);
     see(picked[0]);
@@ -559,66 +569,43 @@ function wrapTag(tag) {
   return 1;
 }
 
-function styleBlock(prop, value) {
-  var blk = ensureBlock();
-  if (!blk) return 0;
-  blk.style[prop] = value;
-  see(blk);
-  return 1;
+// 样式全清掉了就把空的 style="" 去掉，否则存盘会变成一堆没用的内嵌 HTML
+function tidy(el) {
+  if (el.getAttribute('style') !== null && !el.style.length) el.removeAttribute('style');
+  return el;
 }
-
-function setSize(px) {
-  syncSel();
-  var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
-  if (picked.length > 1) {
-    for (var i = 0; i < picked.length; i++) picked[i].style.fontSize = px + 'px';
-    reselect(picked);
-    see(picked[0]);
-    return 1;
-  }
-  if (!saved || saved.collapsed) return styleBlock('fontSize', px + 'px');
-  var el = document.createElement('span');
-  el.style.fontSize = px + 'px';
-  el.appendChild(saved.extractContents());
-  saved.insertNode(el);
-  saved = document.createRange();
-  saved.selectNodeContents(el);
-  return 1;
-}
-
-function code() { return wrapTag('code'); }
 
 function list(ordered) {
   syncSel();
+  var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
+  if (picked.length > 1) {
+    for (var i = 0; i < picked.length; i++) toList(picked[i], ordered);
+    syncTodos();
+    see(picked[0]);
+    return 1;
+  }
   var blk = ensureBlock();
   if (!blk) return 0;
-  var tag = ordered ? 'OL' : 'UL';
+  caretIn(toList(blk, ordered));
+  return 1;
+}
+
+// 把一块变成列表项；已经是这种列表就拆回段落。返回该落在光标上的元素
+function toList(blk, ordered) {
+  var want = ordered ? 'OL' : 'UL';
   if (blk.nodeName === 'LI') {
     var host = blk.parentNode;
-    if (host.nodeName === tag) { // 再点一次取消列表
-      var p = document.createElement('p');
-      while (host.firstChild) {
-        var li = host.firstChild;
-        while (li.firstChild && /^(UL|OL)$/.test(li.firstChild.nodeName)) p.appendChild(li.firstChild);
-        while (li.firstChild) p.appendChild(li.firstChild);
-        if (p.lastChild && host.children.length > 1) p.appendChild(document.createElement('br'));
-        host.removeChild(li);
-      }
-      host.parentNode.replaceChild(p, host);
-      caretIn(p);
-      return;
-    }
-    var neo = document.createElement(ordered ? 'ol' : 'ul');
+    if (host.nodeName === want) return lift(blk); // 再点一次取消，只动这一行
+    var neo = document.createElement(want.toLowerCase());
     while (host.firstChild) neo.appendChild(host.firstChild);
     host.parentNode.replaceChild(neo, host);
-    return;
+    return blk;
   }
-  var wrap = document.createElement(ordered ? 'ol' : 'ul');
-  var item = document.createElement('li');
+  var wrap = document.createElement(want.toLowerCase()), item = document.createElement('li');
   while (blk.firstChild) item.appendChild(blk.firstChild);
   wrap.appendChild(item);
   blk.parentNode.replaceChild(wrap, blk);
-  caretIn(item);
+  return item;
 }
 
 function currentLi() {
@@ -646,30 +633,39 @@ function syncTodos() {
   }
 }
 
-function todo() {
-  syncSel();
-  var li = currentLi();
-  if (li) {
-    var ul = li.parentNode;
-    if (ul.classList.contains('todo')) { // 再点一次就把勾选框撤掉，这一行的缩进/对齐跟着走
-      lift(li);
-      return 1;
-    }
+function toTodo(blk) {
+  if (blk.nodeName === 'LI') {
+    var ul = blk.parentNode;
+    if (ul.classList.contains('todo')) return lift(blk); // 再点一次取消，这一行的缩进/对齐跟着走
     ul.classList.add('todo');
     for (var i = 0; i < ul.children.length; i++) {
       if (!ul.children[i].querySelector('input')) wrapTodo(ul.children[i]);
     }
-    return 1;
+    return blk;
   }
-  var blk = ensureBlock();
-  var list = document.createElement('ul');
+  var list = document.createElement('ul'), item = document.createElement('li');
   list.className = 'todo';
-  var item = document.createElement('li');
   while (blk.firstChild) item.appendChild(blk.firstChild);
   wrapTodo(item);
   list.appendChild(item);
   blk.parentNode.replaceChild(list, blk);
-  caretIn(item.lastChild);
+  return item.lastChild;
+}
+
+function todo() {
+  syncSel();
+  var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
+  if (picked.length > 1) {
+    for (var i = 0; i < picked.length; i++) toTodo(picked[i]);
+    syncTodos();
+    see(picked[0]);
+    return 1;
+  }
+  if (currentLi()) { toTodo(currentLi()); return 1; }
+  var blk = ensureBlock();
+  if (!blk) return 0;
+  caretIn(toTodo(blk));
+  return 1;
 }
 
 // 插入的东西跟在当前段落后面，落成单独一段
@@ -719,24 +715,16 @@ function insertHr() {
 
 function insertTable() {
   var cell = '<td><br></td><td><br></td>';
-  insertAfter(document.createRange().createContextualFragment(
-    '<table><tbody><tr>' + cell + '</tr><tr>' + cell + '</tr></tbody></table>').firstChild);
+  // 表格直接插在段落后面，不套 <p>（套了浏览器会把 <p> 拆开，存盘也会丢）
+  var blk = ensureBlock();
+  var frag = document.createRange().createContextualFragment(
+    '<table><tbody><tr>' + cell + '</tr><tr>' + cell + '</tr></tbody></table>');
+  blk.parentNode.insertBefore(frag, blk.nextSibling);
 }
 
 function blockOf(node) {
   while (node && node !== document.body && !/^(P|DIV|H1|H2|H3|BLOCKQUOTE|LI)$/.test(node.nodeName)) node = node.parentNode;
   return node && node !== document.body ? node : null;
-}
-
-function align(dir) { return styleBlock('textAlign', dir); }
-
-function indent(delta) {
-  syncSel();
-  var blk = selBlock();
-  if (!blk) return 0;
-  var cur = parseInt(blk.style.marginLeft || '0', 10);
-  blk.style.marginLeft = Math.max(0, cur + delta) + 'px';
-  return 1;
 }
 
 snap();

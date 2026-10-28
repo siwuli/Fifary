@@ -48,18 +48,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.FormatAlignCenter
-import androidx.compose.material.icons.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.FormatBold
-import androidx.compose.material.icons.filled.FormatIndentDecrease
-import androidx.compose.material.icons.filled.FormatIndentIncrease
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatStrikethrough
-import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.Mic
@@ -448,47 +442,25 @@ fun EditorScreen(
                                 StyleButton("注释", 14, FontWeight.Normal) { fmt("block('blockquote')") }
                             }
 
+                            // 只留 markdown 存得下的：下划线/文字底色/字体/字号/缩进/对齐/波浪线
+                            // 存进 .md 只能变成一堆内嵌 HTML，干脆不要这些按钮
                             PanelRow {
                                 BubbleIcon(Icons.Filled.FormatBold, "加粗", box = 44.dp) { fmt("wrapTag('b')") }
                                 BubbleIcon(Icons.Filled.FormatItalic, "斜体", box = 44.dp) { fmt("wrapTag('i')") }
                                 BubbleIcon(Icons.Filled.FormatStrikethrough, "删除线", box = 44.dp) {
                                     fmt("wrapTag('s')")
                                 }
-                                BubbleIcon(Icons.Filled.FormatUnderlined, "下划线", box = 44.dp) {
-                                    fmt("wrapTag('u')")
-                                }
-                                BubbleIcon(Icons.Filled.Code, "代码", box = 44.dp) { fmt("code()") }
-                            }
-
-                            PanelRow {
                                 BubbleIcon(Icons.Filled.FormatListBulleted, "无序列表", box = 44.dp) {
                                     fmt("list(false)")
                                 }
                                 BubbleIcon(Icons.Filled.FormatListNumbered, "有序列表", box = 44.dp) {
                                     fmt("list(true)")
                                 }
-                                BubbleIcon(Icons.Filled.Checklist, "待办", box = 44.dp) { fmt("todo()") }
-                                BubbleIcon(Icons.Filled.FormatIndentIncrease, "增加缩进", box = 44.dp) {
-                                    fmt("indent(32)")
-                                }
-                                BubbleIcon(Icons.Filled.FormatIndentDecrease, "减少缩进", box = 44.dp) {
-                                    fmt("indent(-32)")
-                                }
-                                BubbleIcon(Icons.Filled.FormatAlignCenter, "居中", box = 44.dp) {
-                                    fmt("align('center')")
-                                }
-                                BubbleIcon(Icons.Filled.FormatAlignRight, "右对齐", box = 44.dp) {
-                                    fmt("align('right')")
-                                }
                             }
 
                             PanelRow {
+                                BubbleIcon(Icons.Filled.Checklist, "待办", box = 44.dp) { fmt("todo()") }
                                 BubbleIcon(Icons.Filled.HorizontalRule, "分割线", box = 44.dp) { fmt("insertHr()") }
-                                // 参考 btn_text_size：字号
-                                TextChip("14") { fmt("setSize(14)") }
-                                TextChip("16") { fmt("setSize(16)") }
-                                TextChip("20") { fmt("setSize(20)") }
-                                TextChip("24") { fmt("setSize(24)") }
                             }
                         }
 
@@ -651,24 +623,6 @@ private fun StyleButton(label: String, size: Int, weight: FontWeight, onClick: (
     }
 }
 
-@Composable
-private fun TextChip(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .heightIn(min = 36.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = Space.s, vertical = Space.xs),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
 
 private fun stamp(at: Long): String =
     SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(at))
