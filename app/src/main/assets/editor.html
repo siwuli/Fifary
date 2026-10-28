@@ -38,9 +38,11 @@
   .player .t { flex: none; font-size: 12px; color: #666; font-variant-numeric: tabular-nums; }
   mark { background: #ffe9a8; }
   ul.todo { list-style: none; padding-left: 0; }
-  /* 勾选框绝对定位、正文按普通行排：flex 里空的 .t 会塌成 0 宽，光标被画到行首（框左边） */
-  ul.todo > li { position: relative; padding-left: 26px; }
-  ul.todo > li > input { position: absolute; left: 0; top: 0.53em; width: 1em; height: 1em; margin: 0; accent-color: #2f6bff; }
+  /* 勾选框绝对定位、正文按普通行排：flex 里空的 .t 会塌成 0 宽，光标被画到行首（框左边）。
+     em 要跟着这一行的字号走（标题大小的待办，框和位置一起放大），所以宽高和 top 都用 em，
+     并且 input 得显式 inherit 字号——表单控件默认不继承，框会一直卡在正文尺寸上 */
+  ul.todo > li { position: relative; padding-left: 1.625em; }
+  ul.todo > li > input { position: absolute; left: 0; top: 0.325em; width: 1em; height: 1em; margin: 0; font-size: inherit; accent-color: #2f6bff; }
   ul.todo > li[data-done="1"] > .t { color: #9a9a9e; text-decoration: line-through; }
 </style>
 </head>
@@ -642,12 +644,26 @@ function plain(el) {
   return el;
 }
 
+var BIG = { H1: '24px', H2: '20px', H3: '16px' };
+
+// 分条、待办勾选框和标题字号是两回事（参考里能同时有），可是 markdown 一行只能有一个标记，
+// 所以列表项不改标签：标题字号写成行内样式，分条和框都留着（带样式的列表本来整段按 HTML 存）
+function styleTag(blk, tag) {
+  if (blk.nodeName === 'LI' && tag !== 'blockquote') {
+    var size = BIG[tag.toUpperCase()];
+    blk.style.fontSize = size || '';
+    blk.style.fontWeight = size ? '600' : '';
+    return tidy(blk);
+  }
+  return plain(setTag(blk, tag));
+}
+
 function block(tag) {
   syncSel();
   wrapBare();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
-    for (var i = 0; i < picked.length; i++) picked[i] = plain(setTag(picked[i], tag));
+    for (var i = 0; i < picked.length; i++) picked[i] = styleTag(picked[i], tag);
     syncTodos();
     reselect(picked);
     see(picked[0]);
@@ -656,7 +672,7 @@ function block(tag) {
   var blk = ensureBlock();
   if (!blk) return 0;
   var want = tag === 'blockquote' ? 'BLOCKQUOTE' : tag.toUpperCase();
-  if (blk.nodeName !== want) caretIn(plain(setTag(blk, tag)));
+  if (blk.nodeName !== want) caretIn(styleTag(blk, tag));
   else plain(blk);
   syncTodos();
   return 1;
@@ -750,8 +766,6 @@ function list(ordered) {
 // 把一块变成列表项；已经是这种列表就拆回段落。返回该落在光标上的元素
 // 标题和编号在参考里是两回事、能同时有；markdown 没这种写法，就把字号写成行内样式，
 // 带样式的列表 htmlToMd 本来就整段按 HTML 存
-var BIG = { H1: '24px', H2: '20px', H3: '16px' };
-
 function sizeInto(el, from) {
   if (!BIG[from.nodeName]) return;
   el.style.fontSize = BIG[from.nodeName];
