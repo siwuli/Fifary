@@ -16,7 +16,8 @@
   }
   /* 行高显式给到每个块：光靠 body 的 font 简写，WebView 画光标时会用另一套行高，跟文字错开 */
   h1, h2, h3, p, blockquote, li, div, ul, ol { line-height: 1.65; }
-  body:empty::before { content: "输入文本"; color: #b8b8bc; }
+  /* 提示挂在第一行上：挂 body 上光标和字不在同一个行盒里，看着错位 */
+  body > .ph::before { content: "输入文本"; color: #b8b8bc; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
@@ -342,9 +343,12 @@ function see(el) {
 }
 
 function caretAt(el, atStart) {
+  // 行里只有 <br> 时，光标放它后面就没有行盒了，会画到下一行去；放前面
+  var n = el.childNodes.length;
+  var off = atStart ? 0 : (n && el.lastChild.nodeName === 'BR' ? n - 1 : n);
   var r = document.createRange();
-  r.selectNodeContents(el);
-  r.collapse(!!atStart);
+  r.setStart(el, off);
+  r.collapse(true);
   var s = window.getSelection();
   s.removeAllRanges();
   s.addRange(r);
@@ -352,7 +356,11 @@ function caretAt(el, atStart) {
   see(el);
 }
 
-function caretIn(el) { caretAt(el, false); }
+// 列表项的末尾在 .t 外面，光标落在 li 上打字就成了 li 里的裸文本，存盘时被丢掉
+function caretIn(el) {
+  var t = el.nodeName === 'LI' && el.querySelector('.t');
+  caretAt(t || el, false);
+}
 
 function startOf(el, r) {
   var pre = document.createRange();
@@ -390,6 +398,7 @@ function lift(li) {
   list.parentNode.insertBefore(p, ref);
   if (tail) list.parentNode.insertBefore(tail, p.nextSibling);
   if (!list.children.length) list.parentNode.removeChild(list);
+  if (!p.firstChild) p.appendChild(document.createElement('br'));
   caretAt(p, true);
   return p;
 }
@@ -482,6 +491,25 @@ function keepEmpty() {
     var host = el.nodeName === 'LI' && el.querySelector('.t') ? el.querySelector('.t') : el;
     if (!host.firstChild) host.appendChild(document.createElement('br'));
   }
+  // 分割线/表格在最后一行时，后面得有一行落光标，不然它删不掉
+  var last = document.body.lastElementChild;
+  if (last && /^(HR|TABLE)$/.test(last.nodeName)) {
+    var tail = document.createElement('p');
+    tail.appendChild(document.createElement('br'));
+    document.body.appendChild(tail);
+  }
+  // 占位提示只给整篇都空的第一行；有内容就摘掉
+  var ph = document.querySelector('.ph');
+  if (ph) ph.classList.remove('ph');
+  if (document.body.textContent.trim() || document.body.querySelector('img,hr,table,input,.player')) return;
+  var first = document.body.firstElementChild;
+  if (!first) {
+    if (document.body.childNodes.length) return; // 裸文本还没收成段落，等 wrapBare 收完再说
+    first = document.createElement('p');
+    document.body.appendChild(first);
+    first.appendChild(document.createElement('br'));
+  }
+  if (/^(P|DIV|H[123]|BLOCKQUOTE)$/.test(first.nodeName)) first.classList.add('ph');
 }
 
 // 选中的范围跨了几个块，就返回这几个块（列表取到 li，跳过列表本身）
@@ -673,6 +701,8 @@ function wrapTodo(li) {
   var span = document.createElement('span');
   span.className = 't';
   while (li.firstChild) span.appendChild(li.firstChild);
+  // 空的勾选框也得有行盒，否则光标画到框前面去，打出来的字还落在 .t 外面
+  if (!span.firstChild) span.appendChild(document.createElement('br'));
   li.setAttribute('data-done', '0');
   li.appendChild(box);
   li.appendChild(span);
@@ -722,8 +752,14 @@ function todo() {
 }
 
 // 插入的东西跟在当前段落后面，落成单独一段
+// 但表格/分割线/图片不能塞进 <ul> 里：会把列表行挤乱，存盘还会被当成列表项
+function afterBlk(blk) {
+  while (/^(LI|UL|OL)$/.test(blk.nodeName) && blk.parentNode && blk.parentNode !== document.body) blk = blk.parentNode;
+  return blk;
+}
+
 function insertAfter(node) {
-  var blk = ensureBlock(), p = document.createElement('p');
+  var blk = afterBlk(ensureBlock()), p = document.createElement('p');
   p.appendChild(node);
   blk.parentNode.insertBefore(p, blk.nextSibling);
 }
@@ -762,14 +798,21 @@ function insertText(text) {
 }
 
 function insertHr() {
-  var blk = ensureBlock(), hr = document.createElement('hr');
+  var blk = afterBlk(ensureBlock()), hr = document.createElement('hr');
   blk.parentNode.insertBefore(hr, blk.nextSibling);
+  // 分割线是空元素，光标进不去；后面没有行它就永远删不掉，得补一行
+  if (!hr.nextElementSibling) {
+    var p = document.createElement('p');
+    p.appendChild(document.createElement('br'));
+    hr.parentNode.appendChild(p);
+    caretAt(p, true);
+  }
 }
 
 function insertTable() {
   var cell = '<td><br></td><td><br></td>';
   // 表格直接插在段落后面，不套 <p>（套了浏览器会把 <p> 拆开，存盘也会丢）
-  var blk = ensureBlock();
+  var blk = afterBlk(ensureBlock());
   var frag = document.createRange().createContextualFragment(
     '<table><tbody><tr>' + cell + '</tr><tr>' + cell + '</tr></tbody></table>');
   blk.parentNode.insertBefore(frag, blk.nextSibling);
