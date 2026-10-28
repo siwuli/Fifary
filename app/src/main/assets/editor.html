@@ -223,6 +223,7 @@ function listMd(el, depth, ordered) {
 }
 
 function htmlToMd() {
+  wrapBare();
   var lines = [], kids = document.body.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
@@ -338,10 +339,32 @@ function selBlock() {
   return null;
 }
 
+// 新笔记里第一行是裸文本（<body> 下直接一个文本节点，没有段落包着）：
+// 格式找不到块就另起空段落，看着像"点了没反应"；存盘也会把这行漏掉。先收成 <p>
+function wrapBare() {
+  var run = null, n = 0, kids = [].slice.call(document.body.childNodes);
+  for (var i = 0; i < kids.length; i++) {
+    var k = kids[i];
+    if (k.nodeType === 3) {
+      if (!k.nodeValue.trim()) continue;
+      if (!run) {
+        run = document.createElement('p');
+        document.body.insertBefore(run, k);
+      }
+      run.appendChild(k);
+      n++;
+      continue;
+    }
+    run = null;
+  }
+  return n;
+}
+
 // 空笔记里点「标题」「字号」也得有东西可改；已经有内容就落到最后一行，不另起一个空段落
 function ensureBlock() {
   var blk = selBlock();
   if (blk) return blk;
+  wrapBare();
   var kids = document.body.children, last = null;
   for (var i = kids.length - 1; i >= 0; i--) {
     if (kids[i].id === 'slash') continue;
