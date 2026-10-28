@@ -433,9 +433,14 @@ document.body.addEventListener('keydown', function (e) {
   }
   // 第一行空着的标题位：在下一行行首退格就把它删掉，整篇变成普通正文（参考便签删得掉标题）
   var blk = blockOf(host);
-  var prev = blk && blk.previousElementSibling;
-  if (!prev || prev.nodeName !== 'H1' || prev.textContent.trim()) return;
-  if (!startOf(blk, r)) return;
+  if (!blk || !startOf(blk, r)) return;
+  var prev = blk.previousElementSibling;
+  if (!prev) {
+    // 已经是第一行行首、前面没东西可删：别交给浏览器，它会自己把行拆掉再补回来，光标就弹一下
+    e.preventDefault();
+    return;
+  }
+  if (prev.nodeName !== 'H1' || prev.textContent.trim()) return;
   e.preventDefault();
   document.body.removeChild(prev);
   keepEmpty();
