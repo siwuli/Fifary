@@ -1,9 +1,11 @@
 package io.github.fifary.ui.editor
 
+import android.content.Context
 import android.content.Intent
 import android.media.MediaRecorder
 import android.os.Build
 import android.speech.RecognizerIntent
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -169,6 +171,13 @@ fun EditorScreen(
         if (view == null) {
             Toast.makeText(context, "编辑器还没准备好", Toast.LENGTH_SHORT).show()
             return
+        }
+        // 焦点得在改之前给回 WebView：焦点在标题上时改 DOM，浏览器不画光标
+        view.requestFocus()
+        // 焦点是从标题那边抢回来的话输入法已经收了，改完得叫回来，不然还得再点一下才能打字
+        view.post {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(view, 0)
         }
         view.evaluateJavascript("var _r = ($code); snap(); _r") { r ->
             if (r == "0") Toast.makeText(context, "先点一下要改的那一行", Toast.LENGTH_SHORT).show()
