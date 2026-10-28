@@ -488,6 +488,36 @@ document.body.addEventListener('keydown', function (e) {
   snap();
 });
 
+// 待办里回车：拆下一项这件事交给浏览器（自己动手输入法会把字插到列表外面去），
+// 拆完光标落在复选框前面，打出来的字画在框上、勾选和删除线全对不上——挪进 .t。
+// 必须等这一帧过完：要在浏览器自己插入完之后再摆光标，输入法才认
+document.body.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  var s = window.getSelection();
+  if (!s || !s.rangeCount) return;
+  var r = s.getRangeAt(0);
+  if (!r.collapsed) return;
+  var host = r.startContainer.nodeType === 3 ? r.startContainer.parentNode : r.startContainer;
+  var ul = host.closest ? host.closest('ul.todo') : null;
+  if (!ul) return;
+  setTimeout(function () { fixTodoCaret(ul); }, 0);
+});
+
+// 拆出来的待办项光标落在复选框前面（结构上就是 li 的开头），字会画到框上。
+// 挪进 .t；顺便把散在 li 里的裸文本收进去
+function fixTodoCaret(ul) {
+  if (!document.body.contains(ul)) return;
+  syncTodos();
+  var sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  var n = sel.anchorNode, at = n && n.nodeType === 3 ? n.parentNode : n;
+  if (!at || !at.closest || at.closest('span.t')) return; // 已经在 .t 里
+  var li = at.closest('li');
+  if (!li || li.parentNode !== ul) return;
+  var t = li.querySelector('span.t');
+  if (t) caretAt(t, true);
+}
+
 // 标题行末尾回车 → 下一行按正文来，不然一路都是大字（标题只是个块格式，这里只按标签判断）
 document.body.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter' || e.shiftKey) return;
@@ -828,10 +858,31 @@ function wrapTodo(li) {
   li.appendChild(span);
 }
 
+// 待办项里只该有「复选框 + .t」。浏览器拆行、输入法自己插字的时候，散在 li 里的裸文本
+// 会画到复选框上（勾选和删除线也对不上）。挪节点不碰选区，光标跟着文本节点一起走
 function syncTodos() {
   var lis = document.querySelectorAll('ul.todo > li');
   for (var i = 0; i < lis.length; i++) {
-    if (!lis[i].querySelector('input')) wrapTodo(lis[i]);
+    var li = lis[i], box = li.querySelector('input'), t = li.querySelector('span.t');
+    if (!box) {
+      // 浏览器拆列表项时框不会跟着复制过来：补一个，别把已有的 .t 再套一层
+      box = document.createElement('input');
+      box.type = 'checkbox';
+      box.setAttribute('contenteditable', 'false');
+      li.insertBefore(box, li.firstChild);
+      li.setAttribute('data-done', '0');
+    }
+    if (!t) { t = document.createElement('span'); t.className = 't'; li.appendChild(t); }
+    if (li.firstChild !== box) li.insertBefore(box, li.firstChild);
+    var head = [], tail = [], seen = false, n = li.childNodes;
+    for (var k = 0; k < n.length; k++) {
+      var c = n[k];
+      if (c === t) { seen = true; continue; }
+      if (c === box || /^(UL|OL)$/.test(c.nodeName)) continue;
+      (seen ? tail : head).push(c);
+    }
+    for (var h = head.length - 1; h >= 0; h--) t.insertBefore(head[h], t.firstChild);
+    for (var q = 0; q < tail.length; q++) t.appendChild(tail[q]);
   }
 }
 

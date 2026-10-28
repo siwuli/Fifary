@@ -440,6 +440,53 @@ T('Y3 中间空项回车把列表拆两半', '<ul><li>aa</li><li><br></li><li>bb
     bad('Y3 拆出来的项数不对', document.body.innerHTML);
   else PASS++;
 }, null);
+function inT() {
+  var n = window.getSelection().anchorNode;
+  var el = n && n.nodeType === 3 ? n.parentNode : n;
+  return !!(el && el.closest && el.closest('span.t'));
+}
+// 浏览器拆完待办项，新项光标在复选框前面：得挪进 .t，不然字画在框上
+var TODO_SPLIT = '<ul class="todo"><li data-done="0"><input type="checkbox"><span class="t">aa</span></li>' +
+  '<li data-done="0"><input type="checkbox"><span class="t"><br></span></li></ul>';
+T('Y4 新待办项的光标挪进 .t', TODO_SPLIT, function () {
+  var lis = document.querySelectorAll('li');
+  c2(lis[1], 0);
+  fixTodoCaret(document.querySelector('ul.todo'));
+  if (!inT()) bad('Y4 光标还在复选框前面', document.body.innerHTML);
+  else PASS++;
+  document.execCommand('insertText', false, 'bb');
+  if (lis[1].querySelector('.t').textContent !== 'bb') bad('Y4 打的字没进 .t', document.body.innerHTML);
+}, '- [ ] aa\n- [ ] bb');
+T('Y5 输入法把字塞在 .t 外面', '<ul class="todo"><li data-done="0"><input type="checkbox"><span class="t"></span>y</li></ul>', function () {
+  c2(document.querySelector('li'), 1);
+  fixTodoCaret(document.querySelector('ul.todo'));
+  var t = document.querySelector('li > span.t');
+  if (!t || t.textContent !== 'y') bad('Y5 裸文本没收进 .t', document.body.innerHTML); else PASS++;
+  if (!inT()) bad('Y5 光标没跟着进 .t', document.body.innerHTML);
+  else PASS++;
+}, '- [ ] y');
+// 输入法不理我们摆的选区，字直接塞进 li 里（真机 Gboard 就是这样）：得自己收进 .t
+T('Y6 li 里的裸文本收进 .t', '<ul class="todo"><li data-done="0"><input type="checkbox"><span class="t">aa</span>bb</li></ul>', function () {
+  syncTodos();
+  var t = document.querySelector('li > span.t');
+  if (document.querySelectorAll('li > span.t').length !== 1 || t.textContent !== 'aabb')
+    bad('Y6 裸文本没收进 .t', document.body.innerHTML);
+  else if (document.querySelector('li').firstChild.nodeName !== 'INPUT')
+    bad('Y6 复选框没排到最前', document.body.innerHTML);
+  else PASS++;
+}, '- [ ] aabb');
+T('Y8 浏览器拆出来的项补框不套 .t', '<ul class="todo"><li data-done="0"><input type="checkbox"><span class="t">aa</span></li><li data-done="0"><span class="t"><br></span></li></ul>', function () {
+  syncTodos();
+  var li = document.querySelectorAll('li')[1];
+  if (!li.querySelector('input') || li.firstChild.nodeName !== 'INPUT') bad('Y8 没补上复选框', document.body.innerHTML);
+  else if (li.querySelectorAll('span.t').length !== 1) bad('Y8 .t 套了两层', document.body.innerHTML);
+  else PASS++;
+}, null);
+T('Y7 复选框后面的裸文本', '<ul class="todo"><li data-done="0"><input type="checkbox">bb</li></ul>', function () {
+  syncTodos();
+  var t = document.querySelector('li > span.t');
+  if (!t || t.textContent !== 'bb') bad('Y7 裸文本没收进 .t', document.body.innerHTML); else PASS++;
+}, '- [ ] bb');
 
 document.title = 'PASS=' + PASS + ' FAIL=' + FAILS.length;
 var pre = document.createElement('pre');
