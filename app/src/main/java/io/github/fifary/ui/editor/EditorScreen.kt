@@ -340,9 +340,9 @@ fun EditorScreen(
             }
         }
 
-        // 参考 app 顶栏下面那行：时间 | 分组
+        // 参考 app 顶栏下面那行：最后修改时间 | 分组（不是创建时间）
         Text(
-            text = "${stamp(note?.createdAt ?: System.currentTimeMillis())}  |  ${folder.ifEmpty { NotesStore.DEFAULT }}",
+            text = "${stamp(note?.updatedAt ?: System.currentTimeMillis())}  |  ${folder.ifEmpty { NotesStore.DEFAULT }}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),

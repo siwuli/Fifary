@@ -47,9 +47,12 @@ private const val STAGGER_LIMIT = 12
 private val DateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
 private const val MINUTE = 60_000L
 
-// 时间说法跟参考 App 一致：刚记的用相对时间，旧的用日期
+// 卡片上的时间是「现在 - 最后修改」的差；列表里有个 20 秒走一次的钟推着它重新算
+internal var clockNow by mutableStateOf(System.currentTimeMillis())
+
+// 时间说法跟参考 App 一致：刚记的用相对时间，旧了直接给日期
 internal fun timeLabel(at: Long): String {
-    val diff = System.currentTimeMillis() - at
+    val diff = clockNow - at
     return when {
         diff < MINUTE -> "刚刚"
         diff < 60 * MINUTE -> "${diff / MINUTE} 分钟前"

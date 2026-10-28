@@ -72,6 +72,7 @@ import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Elev
 import io.github.fifary.ui.theme.Radius
 import io.github.fifary.ui.theme.Space
+import kotlinx.coroutines.delay
 
 @Composable
 fun NoteListScreen(
@@ -125,6 +126,14 @@ fun NoteListScreen(
     }
 
     LaunchedEffect(Unit) { NotesStore.purgeExpiredTrash() }
+
+    // 卡片上显示的是「现在 - 最后修改」的差，钟得自己走，不然「刚刚」会一直挂着
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000)
+            clockNow = System.currentTimeMillis()
+        }
+    }
 
     // 离开私密空间就自动上锁，跟市面上的私密空间一致
     DisposableEffect(folder) {
