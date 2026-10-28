@@ -276,9 +276,21 @@ function htmlToMd() {
   return lines.join('\n');
 }
 
+// 空笔记才给标题位 + 一行正文。只在打开笔记时补（setMd），
+// 不然用户把标题位删掉、再退格把最后一行也删空，补位又会把标题塞回来
+function seedTitle() {
+  var h = document.createElement('h1');
+  h.appendChild(document.createElement('br'));
+  var p = document.createElement('p');
+  p.appendChild(document.createElement('br'));
+  document.body.appendChild(h);
+  document.body.appendChild(p);
+}
+
 function setMd(md) {
   document.body.innerHTML = mdToHtml(md);
   syncTodos();
+  if (!document.body.childNodes.length) seedTitle();
   keepEmpty();
   hist = [];
   at = -1;
@@ -533,15 +545,6 @@ function keepEmpty() {
     var tail = document.createElement('p');
     tail.appendChild(document.createElement('br'));
     document.body.appendChild(tail);
-  }
-  // 整篇空的时候留出标题位 + 下面一行正文：标题那行只是「标题」格式，光标进的是正文那行
-  if (!document.body.childNodes.length) {
-    var h = document.createElement('h1');
-    h.appendChild(document.createElement('br'));
-    var p = document.createElement('p');
-    p.appendChild(document.createElement('br'));
-    document.body.appendChild(h);
-    document.body.appendChild(p);
   }
   // 第一行就是标题位：只要它空着就留着灰提示，正文有字也一样（参考便签的标题块空着就显示占位）
   var ph = document.querySelector('.ph');

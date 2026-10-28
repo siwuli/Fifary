@@ -145,11 +145,20 @@ object NotesStore {
     fun isUntitled(name: String): Boolean =
         name.isBlank() || name == UNTITLED || name.startsWith("$UNTITLED ")
 
+    // 第一行可能是一整句话：落盘的名字截到 40 字，别让文件名超长写不进去。
+    // 重名不管——两条笔记可以同名，后面用「 2」错开（参考便签一条一个 id，本来就能重名）
+    private fun fileName(title: String): String {
+        var s = title.trim().replace("/", " ").take(40)
+        if (s.lastOrNull()?.isHighSurrogate() == true) s = s.dropLast(1)
+        return s.trim()
+    }
+
     fun save(path: String, folder: String, title: String, body: String): String {
         val time = System.currentTimeMillis()
         val old = path.substringAfterLast('/').removeSuffix(".md")
         // 标题空着：本来就是无标题的保持不变（否则每存一次都改名），有标题的清成无标题
-        val name = title.trim().replace("/", " ").ifEmpty { if (isUntitled(old)) old else UNTITLED }
+        // 名字只用来落盘：第一行可能是一整句，截断到 40 字，不然文件名超长会写失败
+        val name = fileName(title).ifEmpty { if (isUntitled(old)) old else UNTITLED }
         val key = PrivateVault.key
         val existing = byPath(path)
 

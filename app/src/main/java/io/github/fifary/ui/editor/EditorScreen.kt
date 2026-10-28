@@ -192,17 +192,15 @@ fun EditorScreen(
             onDiscard()
             return
         }
-        // 笔记的名字就是正文第一行（参考便签没有单独的标题框）。
-        // 已经起过名的沿用原名，不然一存就把用户的文件改名了（外面显示的标题照样跟正文走）
+        // 笔记没有单独的标题：正文第一行就是标题，外面（列表卡片、文件名）都跟着它走。
+        // 重名照存不误——文件重名由存储层自己错开，跟参考便签一样两条同名笔记能同时存在
         view.evaluateJavascript("getMd()") { json ->
             val md = runCatching { JSONTokener(json).nextValue() as String }.getOrNull()
             if (md == null) {
                 Toast.makeText(context, "没能取出正文，再点一次完成", Toast.LENGTH_SHORT).show()
                 return@evaluateJavascript
             }
-            val old = note?.name.orEmpty()
-            val name = if (NotesStore.isUntitled(old)) titleOf(md) else old
-            if (note == null && md.isBlank()) onDiscard() else onSave(name, md)
+            if (note == null && md.isBlank()) onDiscard() else onSave(titleOf(md), md)
         }
     }
 

@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.fifary"
         minSdk = 26
         targetSdk = 36
-        versionCode = 43
-        versionName = "0.9.33"
+        versionCode = 44
+        versionName = "0.9.34"
     }
 
     buildFeatures {
