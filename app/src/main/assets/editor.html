@@ -6,17 +6,21 @@
   html, body { margin: 0; padding: 0; }
   body {
     padding: 4px 20px 120px 20px;
-    font: 16px/1.65 -apple-system, "sans-serif";
+    font-family: -apple-system, "Noto Sans CJK SC", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
     color: #1b1b1f;
     -webkit-user-select: text;
     outline: none;
     word-break: break-word;
   }
+  /* 行高显式给到每个块：光靠 body 的 font 简写，WebView 画光标时会用另一套行高，跟文字错开 */
+  h1, h2, h3, p, blockquote, li, div, ul, ol { line-height: 1.65; }
   body:empty::before { content: "输入文本"; color: #b8b8bc; }
   h1 { font-size: 24px; font-weight: 600; margin: 14px 0 6px; }
   h2 { font-size: 20px; font-weight: 600; margin: 13px 0 6px; }
   h3 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
-  p { margin: 6px 0; min-height: 1.65em; }
+  p { margin: 6px 0; }
   blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid #d9c07a; color: #666; font-size: 14px; }
   code { font-family: monospace; background: #f2f2f4; padding: 1px 4px; border-radius: 4px; }
   img { max-width: 100%; border-radius: 12px; margin: 8px 0; }
@@ -271,6 +275,7 @@ function htmlToMd() {
 function setMd(md) {
   document.body.innerHTML = mdToHtml(md);
   syncTodos();
+  keepEmpty();
   hist = [];
   at = -1;
   snap();
@@ -294,6 +299,7 @@ function snap() {
 function applySnap(html) {
   document.body.innerHTML = html;
   syncTodos();
+  keepEmpty();
 }
 
 function undo() {
@@ -410,9 +416,14 @@ function selBlock() {
 }
 
 // 新笔记里第一行是裸文本（<body> 下直接一个文本节点，没有段落包着）：
-// 格式找不到块就另起空段落，看着像"点了没反应"；存盘也会把这行漏掉。先收成 <p>
+// 格式找不到块就另起空段落，看着像"点了没反应"；存盘也会把这行漏掉。先收成 <p>。
+// 搬节点会把选区弄塌（选中两个字变成整行），搬完按原来的字位置放回去
 function wrapBare() {
   var run = null, n = 0, kids = [].slice.call(document.body.childNodes);
+  var a = saved && !saved.collapsed ? saved.startContainer : null;
+  var ao = saved ? saved.startOffset : 0;
+  var b = saved && !saved.collapsed ? saved.endContainer : null;
+  var bo = saved ? saved.endOffset : 0;
   for (var i = 0; i < kids.length; i++) {
     var k = kids[i];
     if (k.nodeType === 3) {
@@ -427,13 +438,23 @@ function wrapBare() {
     }
     run = null;
   }
+  if (n && a && b && document.body.contains(a) && document.body.contains(b)) {
+    var r = document.createRange();
+    r.setStart(a, Math.min(ao, (a.nodeValue || '').length));
+    r.setEnd(b, Math.min(bo, (b.nodeValue || '').length));
+    saved = r.cloneRange();
+    var s = window.getSelection();
+    if (s) { s.removeAllRanges(); s.addRange(r); }
+  }
   return n;
 }
 
-// 空笔记里点「标题」「字号」也得有东西可改；已经有内容就落到最后一行，不另起一个空段落
+// 空笔记里点「标题」也得有东西可改；已经有内容就落到最后一行，不另起一个空段落。
+// 手里有选区时不许动光标，否则「选中几个字」会变成「整行」
 function ensureBlock() {
   var blk = selBlock();
   if (blk) return blk;
+  var live = saved && !saved.collapsed ? saved : null;
   wrapBare();
   var kids = document.body.children, last = null;
   for (var i = kids.length - 1; i >= 0; i--) {
@@ -442,13 +463,25 @@ function ensureBlock() {
   }
   var target = last && /^(UL|OL)$/.test(last.nodeName) ? last.lastElementChild : last;
   if (target) {
-    caretIn(target);
+    if (!live) caretIn(target);
     return target;
   }
   var p = document.createElement('p');
   document.body.appendChild(p);
-  caretIn(p);
+  if (!live) caretIn(p);
   return p;
+}
+
+// 空行得有一个 <br> 撑着，不然光标没有行盒，删完字就和文字错位
+function keepEmpty() {
+  var els = document.body.querySelectorAll('p,h1,h2,h3,blockquote,li,div');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    if (el.querySelector('img,hr,table,input,.player')) continue;
+    if (el.textContent.trim()) continue;
+    var host = el.nodeName === 'LI' && el.querySelector('.t') ? el.querySelector('.t') : el;
+    if (!host.firstChild) host.appendChild(document.createElement('br'));
+  }
 }
 
 // 选中的范围跨了几个块，就返回这几个块（列表取到 li，跳过列表本身）
@@ -507,6 +540,7 @@ function setTag(blk, tag) {
 
 function block(tag) {
   syncSel();
+  wrapBare();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
     for (var i = 0; i < picked.length; i++) picked[i] = setTag(picked[i], tag);
@@ -530,12 +564,25 @@ function unwrap(el) {
   parent.removeChild(el);
 }
 
+// 行内样式和浏览器打字是同一种东西：有选区就交给浏览器自己做（选几个字就只改几个字、
+// 取消、粗体里套斜体、跨段落都归它管）；只有光标时按整行切换
+var CMD = { b: 'bold', i: 'italic', s: 'strikeThrough', u: 'underline' };
+
+function keepSel() {
+  var s = window.getSelection();
+  if (!s || !s.rangeCount) return;
+  var b = blockOf(s.anchorNode);
+  if (b) lastBlk = b;
+  saved = s.getRangeAt(0).cloneRange();
+}
+
 function wrapTag(tag) {
   syncSel();
+  wrapBare();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
-  // 跨行选中就整行逐块处理，等于批量调整
+
+  // 跨多行：逐块整行处理
   if (picked.length > 1) {
-    // 全都带着才整批取消，否则给缺的那些补上；已经带着的不重复套，不然会变成粗上加粗
     var on = true;
     for (var i = 0; i < picked.length; i++) {
       if (!picked[i].querySelector(tag)) { on = false; break; }
@@ -548,24 +595,28 @@ function wrapTag(tag) {
     see(picked[0]);
     return 1;
   }
+
+  // 选中了几个字：只改这几个字
+  if (picked.length === 1 && saved.toString() !== '') {
+    var s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(saved);
+    document.execCommand('styleWithCSS', false, false);
+    var ok = document.execCommand(CMD[tag], false, null);
+    keepSel();
+    see(picked[0]);
+    return ok ? 1 : 0;
+  }
+
+  // 只有光标：整行切换，再点一次能取消
   var blk = ensureBlock();
   if (!blk) return 0;
-  var node = saved ? saved.startContainer : null;
-  var up = node && node.nodeType === 1 ? node : node && node.parentNode;
-  var host = up && up.closest ? up.closest(tag) : null;
-  if (host && blk.contains(host)) { unwrap(host); return 1; }
-  var range = saved && !saved.collapsed && blk.contains(saved.startContainer) ? saved : null;
-  if (range) {
-    var el = document.createElement(tag);
-    el.appendChild(range.extractContents());
-    if (!el.firstChild) return 0;
-    range.insertNode(el);
-    caretIn(el);
-  } else {
-    // shortcut: 没有选区（只有光标）时整行生效，等 WebView 能保住输入焦点再做"从下一个字起生效"
-    var whole = wrapWhole(blk, tag);
-    if (whole) caretIn(whole);
+  if (blk.querySelector(tag)) {
+    unwrapAll(blk, tag);
+    return 1;
   }
+  var whole = wrapWhole(blk, tag);
+  if (whole) caretIn(whole);
   return 1;
 }
 
@@ -577,6 +628,7 @@ function tidy(el) {
 
 function list(ordered) {
   syncSel();
+  wrapBare();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
     for (var i = 0; i < picked.length; i++) toList(picked[i], ordered);
@@ -654,6 +706,7 @@ function toTodo(blk) {
 
 function todo() {
   syncSel();
+  wrapBare();
   var picked = saved && !saved.collapsed ? blocksOfRange(saved) : [];
   if (picked.length > 1) {
     for (var i = 0; i < picked.length; i++) toTodo(picked[i]);
@@ -730,6 +783,7 @@ function blockOf(node) {
 snap();
 document.body.addEventListener('input', function () {
   syncTodos();
+  keepEmpty();
   clearTimeout(pending);
   pending = setTimeout(snap, 400);
 });
