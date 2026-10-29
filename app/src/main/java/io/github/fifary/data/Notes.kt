@@ -216,6 +216,10 @@ object NotesStore {
         }
         if (emptyFolders.remove(from)) emptyFolders.add(clean)
         Vault.renameFolder(from, clean)
+        // 拖动排的顺序是按名字记的，改名后要跟着换，不然这个分组会跳到队尾
+        if (SettingsStore.folderOrder.contains(from)) {
+            SettingsStore.updateFolderOrder(SettingsStore.folderOrder.map { if (it == from) clean else it })
+        }
         return true
     }
 
