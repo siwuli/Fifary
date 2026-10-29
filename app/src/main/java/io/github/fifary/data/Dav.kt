@@ -50,16 +50,7 @@ object Dav {
         val app = context.applicationContext
         scope.launch {
             val outcome = runCatching { sync(app, mode) }
-            message = outcome.fold(
-                onSuccess = { (up, down, gone) ->
-                    if (up + down + gone == 0) {
-                        "已是最新"
-                    } else {
-                        "上传 $up · 下载 $down" + if (gone > 0) " · 删除 $gone" else ""
-                    }
-                },
-                onFailure = { "同步失败：${it.message ?: "网络错误"}" },
-            )
+            message = outcome.getOrElse { "同步失败：${it.message ?: "网络错误"}" }
             running = false
             if (outcome.isSuccess) NotesStore.reload(app)
         }
@@ -82,12 +73,37 @@ object Dav {
 
     private var marks: MutableMap<String, Mark> = HashMap()
 
-    private fun sync(context: Context, mode: Mode): Triple<Int, Int, Int> {
+    // 笔记和附件分开数：一个库里的图片往往比笔记多，混在一起报「上传 200 多个」会让人以为同步算错了
+    private class Tally {
+        private var upNotes = 0
+        private var upFiles = 0
+        private var downNotes = 0
+        private var downFiles = 0
+        private var goneNotes = 0
+        private var goneFiles = 0
+
+        fun up(rel: String) = if (rel.endsWith(".md", true)) upNotes++ else upFiles++
+        fun down(rel: String) = if (rel.endsWith(".md", true)) downNotes++ else downFiles++
+        fun gone(rel: String) = if (rel.endsWith(".md", true)) goneNotes++ else goneFiles++
+
+        fun summary(): String = listOfNotNull(
+            part("上传", upNotes, upFiles),
+            part("下载", downNotes, downFiles),
+            part("删除", goneNotes, goneFiles),
+        ).joinToString(" · ").ifEmpty { "已是最新" }
+
+        private fun part(verb: String, notes: Int, files: Int): String? = when {
+            notes > 0 && files > 0 -> "$verb $notes 篇笔记和 $files 个附件"
+            notes > 0 -> "$verb $notes 篇笔记"
+            files > 0 -> "$verb $files 个附件"
+            else -> null
+        }
+    }
+
+    private fun sync(context: Context, mode: Mode): String {
         val base = base()
         val local = Storage.root(context)
-        var up = 0
-        var down = 0
-        var gone = 0
+        val tally = Tally()
         loadMarks(context, base)
 
         mkcol(base)
@@ -114,71 +130,71 @@ object Dav {
                         !localMoved && !remoteMoved -> {}
                         localMoved && !remoteMoved -> if (mode != Mode.DOWNLOAD) {
                             put(base + encodePath(rel), file)
-                            up++
+                            tally.up(rel)
                         }
                         !localMoved && remoteMoved -> if (mode != Mode.UPLOAD) {
                             get(item.url, file, item.time)
-                            down++
+                            tally.down(rel)
                         }
                         mode != Mode.BOTH -> {
                             // 单向模式不做冲突副本：本地的改动往上传，或者按远端覆盖下来
                             if (mode == Mode.UPLOAD) {
                                 put(base + encodePath(rel), file)
-                                up++
+                                tally.up(rel)
                             } else {
                                 get(item.url, file, item.time)
-                                down++
+                                tally.down(rel)
                             }
                         }
                         // 两边都动过：大小一样就是同一份内容（多半只是时间差），取新的；不一样才留副本
                         item.size == file.length() && item.size > 0 -> {
                             if (file.lastModified() > item.time) {
                                 put(base + encodePath(rel), file)
-                                up++
+                                tally.up(rel)
                             } else {
                                 get(item.url, file, item.time)
-                                down++
+                                tally.down(rel)
                             }
                         }
                         file.lastModified() > item.time -> {
                             get(item.url, conflictOf(file), item.time)
                             put(base + encodePath(rel), file)
-                            up++
-                            down++
+                            tally.up(rel)
+                            tally.down(rel)
                         }
                         else -> {
                             file.copyTo(conflictOf(file), overwrite = true)
                             get(item.url, file, item.time)
-                            down++
+                            tally.down(rel)
                         }
                     }
                 }
                 // 只在本地：上次两边都有、本地没动过 → 远端那份被删了，跟着删；否则就是新笔记，传上去
                 file != null -> {
                     if (mark != null && !mark.localChanged(file)) {
-                        if (file.delete()) gone++
+                        if (file.delete()) tally.gone(rel)
                     } else if (mode != Mode.DOWNLOAD) {
                         put(base + encodePath(rel), file)
-                        up++
+                        tally.up(rel)
                     }
                 }
                 // 只在远端：上次两边都有、远端没动过 → 本地删的，远端也删；否则是别处新加的，拉下来
                 item != null -> {
                     if (mark != null && !mark.remoteChanged(item)) {
                         remove(item.url)
-                        gone++
+                        tally.gone(rel)
                     } else if (mode != Mode.UPLOAD) {
                         val target = File(local, rel)
                         target.parentFile?.mkdirs()
                         get(item.url, target, item.time)
-                        down++
+                        tally.down(rel)
                     }
                 }
             }
         }
 
         rebuildMarks(context, base, local)
-        return Triple(up, down, gone)
+        return tally.summary()
     }
 
     // ---- 同步索引：只存两边都有的文件，删掉的自然就不在了 ----

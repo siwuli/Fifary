@@ -4,6 +4,7 @@ import io.github.fifary.ui.S
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
@@ -36,9 +38,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -48,6 +52,7 @@ import androidx.compose.ui.geometry.Size as GeomSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -89,6 +94,7 @@ fun CategoryManagerScreen(
     onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit,
     onSetSecret: (String) -> Unit,
+    onReorder: (List<String>) -> Unit,
     onClose: () -> Unit,
 ) {
     val haptics = rememberHaptics()
@@ -134,7 +140,7 @@ fun CategoryManagerScreen(
                 contentPadding = PaddingValues(
                     start = Space.l,
                     end = Space.l,
-                    top = compactHeight,
+                    top = compactHeight + Space.s,
                     bottom = Space.xl + 88.dp,
                 ),
             ) {
@@ -177,8 +183,14 @@ fun CategoryManagerScreen(
                 }
 
                 item(key = "groups") {
+                    // 本地先排，松手才写回设置：拖动过程中不惊动外层数据
+                    val order = remember(categories) { categories.toMutableStateList() }
+                    var dragging by remember { mutableStateOf<String?>(null) }
+                    var dragOffset by remember { mutableStateOf(0f) }
+                    var rowPx by remember { mutableStateOf(0f) }
+
                     RowGroup {
-                        if (categories.isEmpty()) {
+                        if (order.isEmpty()) {
                             Text(
                                 text = S("还没有分组，点右上角 + 新建"),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -186,47 +198,48 @@ fun CategoryManagerScreen(
                                 modifier = Modifier.padding(horizontal = Space.l, vertical = Space.l),
                             )
                         }
-                        categories.forEachIndexed { index, entry ->
+                        order.forEachIndexed { index, entry ->
                             if (index > 0) RowDivider()
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .springPressable(
-                                        onLongPress = {
-                                            haptics.longPress()
-                                            editing = true
-                                            selected = setOf(entry.path)
-                                        },
-                                        onClick = { if (editing) toggle(entry.path) else onOpenCategory(entry.path) },
-                                    )
-                                    .padding(horizontal = Space.l, vertical = 18.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                NotebookGlyph(size = 20)
-                                Spacer(Modifier.width(Space.s))
-                                Text(
-                                    text = entry.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f),
+                            // key 跟着分组走：换位后拖动的那一行还是同一份 composition，
+                            // 不然手势会被取消，一次只能挪一格
+                            key(entry.path) {
+                                DragRow(
+                                    entry = entry,
+                                    editing = editing,
+                                    selected = entry.path in selected,
+                                    lifted = dragging == entry.path,
+                                    dragOffset = dragOffset,
+                                    onMeasured = { rowPx = it },
+                                    onToggle = { if (editing) toggle(entry.path) else onOpenCategory(entry.path) },
+                                    onLongPress = {
+                                        haptics.longPress()
+                                        editing = true
+                                        selected = setOf(entry.path)
+                                    },
+                                    onHaptics = { haptics.longPress() },
+                                    onDragStart = {
+                                        dragging = entry.path
+                                        dragOffset = 0f
+                                    },
+                                    onDrag = { dy ->
+                                        dragOffset += dy
+                                        val from = order.indexOfFirst { it.path == entry.path }
+                                        if (rowPx > 0f && from >= 0) {
+                                            if (dragOffset > rowPx / 2 && from < order.lastIndex) {
+                                                order.add(from + 1, order.removeAt(from))
+                                                dragOffset -= rowPx
+                                            } else if (dragOffset < -rowPx / 2 && from > 0) {
+                                                order.add(from - 1, order.removeAt(from))
+                                                dragOffset += rowPx
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        dragging = null
+                                        dragOffset = 0f
+                                        onReorder(order.map { it.path })
+                                    },
                                 )
-                                Text(
-                                    text = "${entry.noteCount}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.outline,
-                                )
-                                if (editing) {
-                                    Spacer(Modifier.width(Space.s))
-                                    SelectCheck(entry.path in selected)
-                                } else {
-                                    Icon(
-                                        Icons.Filled.KeyboardArrowRight,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
                             }
                         }
                     }
@@ -521,6 +534,82 @@ private fun RowDivider() {
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
         modifier = Modifier.padding(start = 56.dp),
     )
+}
+
+// 一行分组：左边六个点的拖动把手，拖动时整行跟着手指走
+@Composable
+private fun DragRow(
+    entry: FolderEntry,
+    editing: Boolean,
+    selected: Boolean,
+    lifted: Boolean,
+    dragOffset: Float,
+    onMeasured: (Float) -> Unit,
+    onToggle: () -> Unit,
+    onLongPress: () -> Unit,
+    onHaptics: () -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { translationY = if (lifted) dragOffset else 0f }
+            .onSizeChanged { onMeasured(it.height.toFloat()) }
+            .springPressable(onLongPress = onLongPress, onClick = onToggle)
+            .padding(horizontal = Space.l, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!editing) {
+            Icon(
+                Icons.Filled.DragHandle,
+                contentDescription = S("拖动排序"),
+                tint = MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier
+                    .size(20.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = {
+                                onHaptics()
+                                onDragStart()
+                            },
+                            onDragEnd = onDragEnd,
+                            onDragCancel = onDragEnd,
+                        ) { change, drag ->
+                            change.consume()
+                            onDrag(drag.y)
+                        }
+                    },
+            )
+            Spacer(Modifier.width(Space.xs))
+        }
+        NotebookGlyph(size = 20)
+        Spacer(Modifier.width(Space.s))
+        Text(
+            text = entry.name,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "${entry.noteCount}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.outline,
+        )
+        if (editing) {
+            Spacer(Modifier.width(Space.s))
+            SelectCheck(selected)
+        } else {
+            Icon(
+                Icons.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
 }
 
 // "全部笔记"用的层叠图标，参考图里那个三层效果

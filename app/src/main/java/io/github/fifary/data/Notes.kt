@@ -181,7 +181,7 @@ object NotesStore {
     // 空分组：真实文件系统里目录可以没有文件，占位阶段单独记一份
     private val emptyFolders = mutableStateListOf<String>()
 
-    // 分组永远是平铺的一级目录
+    // 分组永远是平铺的一级目录。顺序按用户在分组页拖出来的，没排过的按名字放在后面
     fun folders(): List<FolderEntry> {
         val names = LinkedHashSet<String>()
         names.add(DEFAULT)
@@ -190,7 +190,9 @@ object NotesStore {
             names.add(note.folder)
         }
         names.addAll(emptyFolders)
-        return names.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it })
+        val order = SettingsStore.folderOrder
+        fun rank(name: String): Int = order.indexOf(name).let { if (it < 0) Int.MAX_VALUE else it }
+        return names.sortedWith(compareBy({ rank(it) }, { it.lowercase() }))
             .map { FolderEntry(path = it, name = it, noteCount = countIn(it)) }
     }
 

@@ -167,6 +167,7 @@ fun FifaryApp() {
                     onSetSecret = { path ->
                         PrivateVault.key?.let { key -> NotesStore.makeSecret(setOf(path), key) }
                     },
+                    onReorder = { order -> SettingsStore.updateFolderOrder(order) },
                     onClose = { navigator.back() },
                 )
 

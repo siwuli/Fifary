@@ -94,6 +94,10 @@ object SettingsStore {
     var davAuto by mutableStateOf(false)
         private set
 
+    // 分组显示顺序，用户拖动排的。不在里面的（新分组）排在后面
+    var folderOrder by mutableStateOf<List<String>>(emptyList())
+        private set
+
     // 只存盐和被密码包住的数据密钥，数据密钥本身解不出来就不落盘
     var secretSalt by mutableStateOf<String?>(null)
         private set
@@ -118,6 +122,7 @@ object SettingsStore {
         davUser = p.getString("davUser", "") ?: ""
         davPass = p.getString("davPass", "") ?: ""
         davAuto = p.getBoolean("davAuto", false)
+        folderOrder = (p.getString("folderOrder", "") ?: "").split("\n").filter { it.isNotBlank() }
         secretSalt = p.getString("secretSalt", null)
         secretWrapped = p.getString("secretWrapped", null)
     }
@@ -169,5 +174,10 @@ object SettingsStore {
             ?.putString("davPass", pass)
             ?.putBoolean("davAuto", auto)
             ?.apply()
+    }
+
+    fun updateFolderOrder(order: List<String>) {
+        folderOrder = order
+        prefs?.edit()?.putString("folderOrder", order.joinToString("\n"))?.apply()
     }
 }

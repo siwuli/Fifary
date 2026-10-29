@@ -9,8 +9,12 @@ object Attach {
 
     const val DIR = "attachments"
 
+    // 从 Obsidian 之类搬过来的库本来就用 assets/ 存图片，跟着它走，不然同一个库里图片分两处
+    fun dirName(context: Context): String =
+        if (File(Storage.root(context), ASSETS).isDirectory) ASSETS else DIR
+
     private fun dir(context: Context): File =
-        File(Storage.root(context), DIR).apply { mkdirs() }
+        File(Storage.root(context), dirName(context)).apply { mkdirs() }
 
     fun file(context: Context, relative: String): File = File(Storage.root(context), relative)
 
@@ -21,10 +25,12 @@ object Attach {
         context.contentResolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
         } ?: return null
-        "$DIR/${target.name}"
+        "${dirName(context)}/${target.name}"
     }.getOrNull()
 
     fun newAudio(context: Context): File = File(dir(context), "rec_${System.currentTimeMillis()}.m4a")
 
     fun newImage(context: Context): File = File(dir(context), "img_${System.currentTimeMillis()}.jpg")
+
+    private const val ASSETS = "assets"
 }
