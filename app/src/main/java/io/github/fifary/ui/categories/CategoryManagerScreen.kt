@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -36,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -48,11 +50,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size as GeomSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -74,6 +80,7 @@ import io.github.fifary.ui.components.rememberSecretGate
 import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Radius
 import io.github.fifary.ui.theme.Space
+import kotlinx.coroutines.delay
 
 private val ToolbarHeight = 52.dp
 private val TitleTop = 54.dp
@@ -109,6 +116,10 @@ fun CategoryManagerScreen(
     var headerHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
     val listState = rememberLazyListState()
+    // 拖到屏幕边上要自己滚屏，得知道列表画在窗口的哪一截
+    var viewport by remember { mutableStateOf(Rect.Zero) }
+    val edgePx = with(density) { 72.dp.toPx() }
+    val stepPx = with(density) { 14.dp.toPx() }
 
     val spacer = (headerHeight - compactHeight).coerceAtLeast(0.dp)
     val spacerPx = with(density) { spacer.toPx() }
@@ -136,7 +147,7 @@ fun CategoryManagerScreen(
         BouncingBox(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onGloballyPositioned { viewport = it.boundsInRoot() },
                 contentPadding = PaddingValues(
                     start = Space.l,
                     end = Space.l,
@@ -187,7 +198,37 @@ fun CategoryManagerScreen(
                     val order = remember(categories) { categories.toMutableStateList() }
                     var dragging by remember { mutableStateOf<String?>(null) }
                     var dragOffset by remember { mutableStateOf(0f) }
+                    var fingerY by remember { mutableStateOf(0f) }
                     var rowPx by remember { mutableStateOf(0f) }
+
+                    fun advance(dy: Float) {
+                        dragOffset += dy
+                        val from = order.indexOfFirst { it.path == dragging }
+                        if (rowPx <= 0f || from < 0) return
+                        if (dragOffset > rowPx / 2 && from < order.lastIndex) {
+                            order.add(from + 1, order.removeAt(from))
+                            dragOffset -= rowPx
+                        } else if (dragOffset < -rowPx / 2 && from > 0) {
+                            order.add(from - 1, order.removeAt(from))
+                            dragOffset += rowPx
+                        }
+                    }
+
+                    // 拖到上下边缘就自己滚屏：内容滚走多少，被拖的那行就补回多少，一直贴在手指下面
+                    LaunchedEffect(dragging) {
+                        if (dragging == null) return@LaunchedEffect
+                        while (dragging != null) {
+                            val near = when {
+                                fingerY < viewport.top + edgePx ->
+                                    -(viewport.top + edgePx - fingerY) / edgePx
+                                fingerY > viewport.bottom - edgePx ->
+                                    (fingerY - viewport.bottom + edgePx) / edgePx
+                                else -> 0f
+                            }
+                            if (near != 0f) advance(listState.scrollBy(near.coerceIn(-1f, 1f) * stepPx))
+                            delay(16)
+                        }
+                    }
 
                     RowGroup {
                         if (order.isEmpty()) {
@@ -217,22 +258,14 @@ fun CategoryManagerScreen(
                                         selected = setOf(entry.path)
                                     },
                                     onHaptics = { haptics.longPress() },
-                                    onDragStart = {
+                                    onDragStart = { y ->
                                         dragging = entry.path
                                         dragOffset = 0f
+                                        fingerY = y
                                     },
                                     onDrag = { dy ->
-                                        dragOffset += dy
-                                        val from = order.indexOfFirst { it.path == entry.path }
-                                        if (rowPx > 0f && from >= 0) {
-                                            if (dragOffset > rowPx / 2 && from < order.lastIndex) {
-                                                order.add(from + 1, order.removeAt(from))
-                                                dragOffset -= rowPx
-                                            } else if (dragOffset < -rowPx / 2 && from > 0) {
-                                                order.add(from - 1, order.removeAt(from))
-                                                dragOffset += rowPx
-                                            }
-                                        }
+                                        fingerY += dy
+                                        advance(dy)
                                     },
                                     onDragEnd = {
                                         dragging = null
@@ -548,7 +581,7 @@ private fun DragRow(
     onToggle: () -> Unit,
     onLongPress: () -> Unit,
     onHaptics: () -> Unit,
-    onDragStart: () -> Unit,
+    onDragStart: (Float) -> Unit,
     onDrag: (Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -562,17 +595,20 @@ private fun DragRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!editing) {
+            var at by remember { mutableStateOf<LayoutCoordinates?>(null) }
             Icon(
                 Icons.Filled.DragHandle,
                 contentDescription = S("拖动排序"),
                 tint = MaterialTheme.colorScheme.outlineVariant,
                 modifier = Modifier
                     .size(20.dp)
+                    .onGloballyPositioned { at = it }
                     .pointerInput(Unit) {
                         detectDragGestures(
-                            onDragStart = {
+                            onDragStart = { down ->
                                 onHaptics()
-                                onDragStart()
+                                // 手指在窗口里的位置：拖到屏幕边缘时靠它判断要不要滚屏
+                                onDragStart(at?.localToRoot(down)?.y ?: 0f)
                             },
                             onDragEnd = onDragEnd,
                             onDragCancel = onDragEnd,

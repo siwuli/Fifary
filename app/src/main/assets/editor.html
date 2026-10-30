@@ -67,6 +67,8 @@ function inline(s) {
     return '\u0001' + (keep.length - 1) + '\u0001';
   });
   s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // HTML 只画一个空格，连打几个要换成 &nbsp;；存盘时 clean() 会换回空格，md 里还是普通空格
+  s = s.replace(/ {2,}/g, function (m) { return m.replace(/ /g, '&nbsp;'); });
   s = s
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (m, alt, src) { return '<img src="' + src + '" alt="' + alt + '">'; })
     .replace(/\[([^\]]+)\]\(([^)\s]+\.(?:m4a|mp3|aac|wav|ogg))\)/gi, function (m, t, src) { return playerHtml(src, t); })
@@ -622,9 +624,11 @@ function keepEmpty() {
   var els = document.body.querySelectorAll('p,h1,h2,h3,blockquote,li,div');
   for (var i = 0; i < els.length; i++) {
     var el = els[i];
-    if (el.querySelector('img,hr,table,input,.player')) continue;
-    if (el.textContent.trim()) continue;
+    // 内容只看放字的那一层：待办项的勾选框是装饰，不能当「有内容」，
+    // 不然空待办项撑不出行盒，光标进不去、退格也删不掉
     var host = el.nodeName === 'LI' && el.querySelector('.t') ? el.querySelector('.t') : el;
+    if (host.querySelector('img,hr,table,input,.player')) continue;
+    if (host.textContent.trim()) continue;
     if (!host.firstChild) host.appendChild(document.createElement('br'));
   }
   // 分割线/表格在最后一行时，后面得有一行落光标，不然它删不掉
