@@ -27,7 +27,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
@@ -61,6 +60,8 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -596,12 +597,10 @@ private fun DragRow(
     ) {
         if (!editing) {
             var at by remember { mutableStateOf<LayoutCoordinates?>(null) }
-            Icon(
-                Icons.Filled.DragHandle,
-                contentDescription = S("拖动排序"),
-                tint = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier
+            DotsGlyph(
+                Modifier
                     .size(20.dp)
+                    .semantics { contentDescription = S("拖动排序") }
                     .onGloballyPositioned { at = it }
                     .pointerInput(Unit) {
                         detectDragGestures(
@@ -644,6 +643,20 @@ private fun DragRow(
                 tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(18.dp),
             )
+        }
+    }
+}
+
+// 常见的六点拖动把手：两列三行的小圆点
+@Composable
+private fun DotsGlyph(modifier: Modifier = Modifier) {
+    val tint = MaterialTheme.colorScheme.outlineVariant
+    Canvas(modifier) {
+        val r = 1.7.dp.toPx()
+        for (x in listOf(size.width * 0.34f, size.width * 0.66f)) {
+            for (y in listOf(size.height * 0.28f, size.height * 0.5f, size.height * 0.72f)) {
+                drawCircle(tint, r, Offset(x, y))
+            }
         }
     }
 }
