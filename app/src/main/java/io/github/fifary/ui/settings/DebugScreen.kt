@@ -48,7 +48,10 @@ fun DebugScreen(onBack: () -> Unit) {
             Rule()
             RowItem(S("运行环境"), "Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}", arrow = false)
             Rule()
-            RowItem(S("焦散阴影"), OplusCaustic.report, arrow = false)
+            RowItem(S("焦散阴影"), OplusCaustic.report) {
+                OplusCaustic.toggle(context)
+                toast(if (OplusCaustic.enabled) "caustic on" else "caustic off")
+            }
         }
         Text(
             text = Storage.root(context).absolutePath,
