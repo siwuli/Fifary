@@ -97,16 +97,18 @@ internal object OplusCaustic {
         if (view.width <= 0 || view.height <= 0 || !view.isAttachedToWindow) return
         val d = view.resources.displayMetrics.density
         runCatching {
-            // 先配 sdf，再上色，最后给位移；顺序照 COUICausticShadowEffect 里那几个 setter 的用法
+            // 先配 sdf 和位移，最后上色，再刷一帧；上一版顺序反过来、且载体是 disabled 的 View，
+            // 系统可能直接跳过不画
             setParams?.invoke(null, view, 9.23f * d, 0.6f, 0.6f, 18f, 0.45f, 0.6f)
-            set.invoke(null, view, color.toArgb())
             setLayout?.invoke(null, view, 0, 0, 0, (4.3f * d).toInt())
+            set.invoke(null, view, color.toArgb())
+            view.invalidate()
             // 回读一次：系统认了才有意义，没认说明接口对第三方是空的
             val want = color.toArgb()
             val got = runCatching { getColor?.invoke(null, view) as? Int }.getOrNull()
             report = when (got) {
                 null -> "已设置,无回读"
-                want -> "已生效"
+                want -> "v2 已生效"
                 else -> "回读=" + Integer.toHexString(got)
             }
         }.getOrElse { report = "异常:" + (it.message ?: it.javaClass.simpleName).take(40) }
@@ -123,7 +125,9 @@ internal fun CausticOutline(shape: Shape, color: Color, modifier: Modifier) {
         modifier = modifier,
         factory = { ctx ->
             View(ctx).apply {
-                isEnabled = false
+                // 不 disable：系统效果可能会跳过 disabled 的 View；只要不可点击就够，触摸照旧交给 Compose
+                isClickable = false
+                isFocusable = false
                 background = android.graphics.drawable.GradientDrawable().apply { setColor(0x01FFFFFF) }
                 addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
                     OplusCaustic.apply(v, currentColor)
