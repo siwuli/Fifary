@@ -139,15 +139,17 @@ fun EditorScreen(
     var recordSec by remember { mutableStateOf(0) }
     var canUndo by remember { mutableStateOf(false) }
     var canRedo by remember { mutableStateOf(false) }
+    var chars by remember { mutableStateOf(0) }
 
     // 没历史可走的那一头，顶栏按钮得灰掉
     LaunchedEffect(page) {
         val view = page ?: return@LaunchedEffect
         while (true) {
-            view.evaluateJavascript("canUndo() + ',' + canRedo()") { r ->
+            view.evaluateJavascript("canUndo() + ',' + canRedo() + ',' + countChars()") { r ->
                 val pair = r.trim('"').split(",")
                 canUndo = pair.getOrNull(0) == "1"
                 canRedo = pair.getOrNull(1) == "1"
+                chars = pair.getOrNull(2)?.toIntOrNull() ?: 0
             }
             delay(400)
         }
@@ -362,9 +364,10 @@ fun EditorScreen(
             }
         }
 
-        // 参考 app 顶栏下面那行：最后修改时间 | 分组（不是创建时间）
+        // 参考 app 顶栏下面那行：最后修改时间 | 分组（不是创建时间）| 字数
         Text(
-            text = "${stamp(note?.updatedAt ?: System.currentTimeMillis())}  |  ${folder.ifEmpty { NotesStore.DEFAULT }}",
+            text = "${stamp(note?.updatedAt ?: System.currentTimeMillis())}  |  ${folder.ifEmpty { NotesStore.DEFAULT }}" +
+                if (chars > 0) "  |  $chars ${S("字符")}" else "",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),

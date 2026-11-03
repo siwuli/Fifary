@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -201,6 +202,8 @@ fun CategoryManagerScreen(
                     var dragOffset by remember { mutableStateOf(0f) }
                     var fingerY by remember { mutableStateOf(0f) }
                     var rowPx by remember { mutableStateOf(0f) }
+                    // 换位后别的行从旧位置滑到新位置，不是直接跳过去
+                    val slots = remember { mutableMapOf<String, Int>() }
 
                     fun advance(dy: Float) {
                         dragOffset += dy
@@ -245,12 +248,22 @@ fun CategoryManagerScreen(
                             // key 跟着分组走：换位后拖动的那一行还是同一份 composition，
                             // 不然手势会被取消，一次只能挪一格
                             key(entry.path) {
+                                // 这一行的位置刚变过：先按「旧位置 - 新位置」的像素顶住，再动画回 0
+                                val shift = remember { Animatable(0f) }
+                                LaunchedEffect(index) {
+                                    val from = slots.put(entry.path, index)
+                                    if (from == null || from == index || rowPx <= 0f) return@LaunchedEffect
+                                    if (dragging == entry.path) return@LaunchedEffect
+                                    shift.snapTo((from - index) * rowPx)
+                                    shift.animateTo(0f)
+                                }
                                 DragRow(
                                     entry = entry,
                                     editing = editing,
                                     selected = entry.path in selected,
                                     lifted = dragging == entry.path,
                                     dragOffset = dragOffset,
+                                    shift = shift.value,
                                     onMeasured = { rowPx = it },
                                     onToggle = { if (editing) toggle(entry.path) else onOpenCategory(entry.path) },
                                     onLongPress = {
@@ -578,6 +591,7 @@ private fun DragRow(
     selected: Boolean,
     lifted: Boolean,
     dragOffset: Float,
+    shift: Float,
     onMeasured: (Float) -> Unit,
     onToggle: () -> Unit,
     onLongPress: () -> Unit,
@@ -589,7 +603,7 @@ private fun DragRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .graphicsLayer { translationY = if (lifted) dragOffset else 0f }
+            .graphicsLayer { translationY = if (lifted) dragOffset else shift }
             .onSizeChanged { onMeasured(it.height.toFloat()) }
             .springPressable(onLongPress = onLongPress, onClick = onToggle)
             .padding(horizontal = Space.l, vertical = 18.dp),

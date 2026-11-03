@@ -80,6 +80,7 @@ object Lang {
         "删除分组" to "Delete group",
         "全部笔记" to "All notes",
         "篇" to "notes",
+        "字符" to "chars",
         // 设置
         "外观" to "Appearance",
         "主题" to "Theme",

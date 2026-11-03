@@ -193,6 +193,22 @@ function ser(node) {
 
 function clean(x) { return x.replace(/\u00a0/g, ' ').trim(); }
 
+// 字数：只数看得见的字，格式记号、空格、换行都不算。
+// 正文在 DOM 里本来就没有 markdown 记号，所以把文字节点里的空白去掉就是答案
+function countChars() {
+  var out = '';
+  (function walk(n) {
+    for (var i = 0; i < n.childNodes.length; i++) {
+      var c = n.childNodes[i];
+      if (c.nodeType === 3) { out += c.nodeValue; continue; }
+      if (c.nodeType !== 1 || c.nodeName === 'INPUT') continue;
+      if (c.classList && c.classList.contains('player')) continue; // 播放器上的时长不是正文
+      walk(c);
+    }
+  })(document.body);
+  return out.replace(/\s/g, '').length;
+}
+
 function clock(s) {
   if (!isFinite(s)) s = 0;
   var m = Math.floor(s / 60), r = Math.floor(s % 60);
