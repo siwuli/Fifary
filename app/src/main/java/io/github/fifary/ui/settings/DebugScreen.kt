@@ -20,6 +20,7 @@ import io.github.fifary.data.Storage
 import io.github.fifary.data.Vault
 import io.github.fifary.ui.S
 import io.github.fifary.ui.components.ConfirmDialog
+import io.github.fifary.ui.components.OplusCaustic
 import io.github.fifary.ui.theme.Space
 
 // 排查问题用：路径、数量、当前配置，加上几个能立刻验证的动作
@@ -46,6 +47,11 @@ fun DebugScreen(onBack: () -> Unit) {
             RowItem(S("占用空间"), size(bytes), arrow = false)
             Rule()
             RowItem(S("运行环境"), "Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}", arrow = false)
+            Rule()
+            RowItem(S("焦散阴影"), OplusCaustic.report) {
+                OplusCaustic.toggle(context)
+                toast(if (OplusCaustic.enabled) "caustic on" else "caustic off")
+            }
         }
         Text(
             text = Storage.root(context).absolutePath,
@@ -98,6 +104,7 @@ private fun diagnostics(context: android.content.Context): String = buildString 
     appendLine("lang=${SettingsStore.language} view=${SettingsStore.viewMode} sort=${SettingsStore.sortMode}")
     appendLine("dav=${SettingsStore.davUrl} auto=${SettingsStore.davAuto}")
     appendLine("android=${Build.VERSION.RELEASE} api=${Build.VERSION.SDK_INT}")
+    appendLine("caustic=${OplusCaustic.report}")
 }
 
 private fun size(bytes: Long): String = when {

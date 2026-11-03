@@ -73,6 +73,10 @@ fun Bubble(
                 }
             ),
         contentAlignment = contentAlignment,
-        content = content,
-    )
+    ) {
+        content()
+        // 只有真的去挂系统焦散时才加这层 View：关着的时候一个多余的 View 都不要，
+        // 否则和原来相比就是多了一层原生 View，手机上会多出无谓的开销
+        if (OplusCaustic.enabled) CausticOutline(shape, color, Modifier.matchParentSize())
+    }
 }
