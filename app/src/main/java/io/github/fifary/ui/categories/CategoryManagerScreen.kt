@@ -273,9 +273,13 @@ fun CategoryManagerScreen(
                                     },
                                     onHaptics = { haptics.longPress() },
                                     onDragStart = { y ->
-                                        dragging = entry.path
-                                        dragOffset = 0f
-                                        fingerY = y
+                                        val idle = dragging == null
+                                        if (idle) {
+                                            dragging = entry.path
+                                            dragOffset = 0f
+                                            fingerY = y
+                                        }
+                                        idle
                                     },
                                     onDrag = { dy ->
                                         fingerY += dy
@@ -596,7 +600,7 @@ private fun DragRow(
     onToggle: () -> Unit,
     onLongPress: () -> Unit,
     onHaptics: () -> Unit,
-    onDragStart: (Float) -> Unit,
+    onDragStart: (Float) -> Boolean,
     onDrag: (Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -617,17 +621,22 @@ private fun DragRow(
                     .semantics { contentDescription = S("拖动排序") }
                     .onGloballyPositioned { at = it }
                     .pointerInput(Unit) {
+                        // 一次只认一根手指：第二根手指按到别的把手上时整段手势让开，
+                        // 否则两路手势抢同一份 dragOffset，行不跟手、松手还会跳位
+                        var owned = false
                         detectDragGestures(
                             onDragStart = { down ->
-                                onHaptics()
                                 // 手指在窗口里的位置：拖到屏幕边缘时靠它判断要不要滚屏
-                                onDragStart(at?.localToRoot(down)?.y ?: 0f)
+                                owned = onDragStart(at?.localToRoot(down)?.y ?: 0f)
+                                if (owned) onHaptics()
                             },
-                            onDragEnd = onDragEnd,
-                            onDragCancel = onDragEnd,
+                            onDragEnd = { if (owned) { owned = false; onDragEnd() } },
+                            onDragCancel = { if (owned) { owned = false; onDragEnd() } },
                         ) { change, drag ->
-                            change.consume()
-                            onDrag(drag.y)
+                            if (owned) {
+                                change.consume()
+                                onDrag(drag.y)
+                            }
                         }
                     },
             )
