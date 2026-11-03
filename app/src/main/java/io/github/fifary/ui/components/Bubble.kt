@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -42,6 +43,19 @@ fun Modifier.bubble(
             1f to Color.Black.copy(alpha = (if (dark) 0.10f else 0.04f) * shine),
         )
     }
+    // 边缘那圈很淡的彩光（色散）：参考图玻璃边的冷暖偏色，左上暖、右下冷，
+    // 用一道斜向的低透明度线性渐变压 1dp 边，比纯白描边更像透明玻璃
+    val prism = remember(dark) {
+        Brush.linearGradient(
+            0f to Color(0x33FFC9A0),
+            0.45f to Color(0x14FFFFFF),
+            1f to Color(0x3D7FC8FF),
+            start = Offset.Zero,
+            end = Offset.Infinite,
+        )
+    }
+
+    val prismDark = remember { Brush.linearGradient(listOf(Color(0x26FFC9A0), Color(0x14FFFFFF), Color(0x337FC8FF)), start = Offset.Zero, end = Offset.Infinite) }
     // 上沿一道极细的高光压边，光是从上面来的那种感觉
     val rim = remember(dark, shine) {
         Brush.verticalGradient(
@@ -64,7 +78,7 @@ fun Modifier.bubble(
             drawRect(gloss)
             drawRect(rim)
         }
-        .then(if (dark) Modifier.border(1.dp, Color.White.copy(alpha = 0.10f), shape) else Modifier)
+        .border(if (dark) 1.dp else 0.8.dp, if (dark) prismDark else prism, shape)
 }
 
 @Composable

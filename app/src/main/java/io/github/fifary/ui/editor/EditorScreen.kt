@@ -392,7 +392,7 @@ fun EditorScreen(
                 Modifier
                     // 平时是居中的小胶囊，点开面板才铺满整宽（参考同样是底部整宽面板）
                     .then(if (panel == Panel.NONE) Modifier.wrapContentWidth() else Modifier.fillMaxWidth())
-                    .bubble(RoundedCornerShape(32.dp), MaterialTheme.colorScheme.surfaceVariant)
+                    .bubble(RoundedCornerShape(32.dp), MaterialTheme.colorScheme.surface)
                     .animateContentSize(spring(dampingRatio = 0.78f, stiffness = 460f)),
             ) {
                 Crossfade(targetState = panel, animationSpec = tween(180), label = "bubble") { current ->
@@ -499,7 +499,7 @@ fun EditorScreen(
                                 Box(
                                     Modifier
                                         .clip(RoundedCornerShape(20.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                                         .clickable { if (recorder != null) stopRecord(); panel = Panel.NONE }
                                         .padding(horizontal = 20.dp, vertical = 8.dp),
                                 ) {
@@ -604,7 +604,7 @@ private fun ExtraRow(items: List<Pair<String, ImageVector>>, activeIndex: Int = 
 private fun TopBubble(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     Bubble(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.surface,
         elevation = Elev.bubble,
         modifier = Modifier.size(38.dp),
         enabled = enabled,
