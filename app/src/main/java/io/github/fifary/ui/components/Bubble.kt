@@ -3,6 +3,7 @@ package io.github.fifary.ui.components
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -26,8 +28,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.fifary.ui.theme.Motion
 
-// 磨砂质感：半透明的片 + 软投影，表面近乎平，只有一点点上亮下暗。
-// 透是关键：底色透过来，壳才像壳而不是贴纸。
+// 玻璃质感：半透明的片 + 软投影 + 一道斜向反光 + 一圈薄薄的玻璃边。
+// 表面是平的（不做球面高光），透才是关键：底色透过来，壳才像壳而不是贴纸。
 @Composable
 fun Modifier.bubble(
     shape: Shape,
@@ -35,21 +37,34 @@ fun Modifier.bubble(
     elevation: Dp = 10.dp,
 ): Modifier {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    // 磨砂：中性表面透一点底子出来；彩色（强调色的 FAB、完成按钮）不掺水，
-    // 一透就成粉彩，参考图里那几颗是实心的。Color.Transparent 乘完还是 0。
+    // 玻璃：中性表面明显是透的，后面的底色/内容透得出来；彩色（强调色的 FAB、完成按钮）
+    // 不掺水，一透就成粉彩。Color.Transparent 乘完还是 0。
     val chroma = maxOf(color.red, color.green, color.blue) - minOf(color.red, color.green, color.blue)
-    val glass = if (chroma > 0.08f) {
-        color
-    } else {
-        color.copy(alpha = color.alpha * if (dark) 0.74f else 0.62f)
+    val tinted = chroma > 0.08f
+    val glass = if (tinted) color else color.copy(alpha = color.alpha * if (dark) 0.80f else 0.78f)
+    // 一道斜向的反光（不是球面的圆斑），加上玻璃边：上沿一道亮边、下沿一道暗边。
+    // 只有这一斜一薄边，表面仍是平的，不会变成弹珠
+    val sheen = remember(dark) {
+        Brush.linearGradient(
+            0f to Color.White.copy(alpha = if (dark) 0.14f else 0.32f),
+            0.55f to Color.Transparent,
+            1f to Color.Black.copy(alpha = if (dark) 0.12f else 0.05f),
+            start = Offset.Zero,
+            end = Offset.Infinite,
+        )
     }
-    // 只在竖直方向留一点极淡的落差，不画高光球、不描亮边：
-    // 参考 App 的按钮是平的磨砂片，一加球面高光就变成玻璃弹珠
-    val gloss = remember(dark) {
+    // 下沿内侧一道很淡的反光：光穿过玻璃底边的样子，玻璃的"厚度"靠它
+    val innerGlow = remember(dark) {
         Brush.verticalGradient(
-            0f to Color.White.copy(alpha = if (dark) 0.05f else 0.12f),
-            0.6f to Color.Transparent,
-            1f to Color.Black.copy(alpha = if (dark) 0.10f else 0.02f),
+            0.82f to Color.Transparent,
+            1f to Color.White.copy(alpha = if (dark) 0.10f else 0.34f),
+        )
+    }
+    val edge = remember(dark) {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = if (dark) 0.22f else 1f),
+            0.5f to Color.White.copy(alpha = if (dark) 0.04f else 0.10f),
+            1f to Color.Black.copy(alpha = if (dark) 0.22f else 0.10f),
         )
     }
     return this
@@ -57,12 +72,19 @@ fun Modifier.bubble(
             elevation = elevation,
             shape = shape,
             clip = false,
-            ambientColor = Color.Black.copy(alpha = if (dark) 0.50f else 0.10f),
-            spotColor = Color.Black.copy(alpha = if (dark) 0.60f else 0.16f),
+            // 悬浮感靠投影：参考 App 的悬浮条/气泡用的是 #52000000~#8a000000 这一档深阴影，
+            // 浅投影只会像贴纸边上一圈脏
+            ambientColor = Color.Black.copy(alpha = if (dark) 0.55f else 0.18f),
+            spotColor = Color.Black.copy(alpha = if (dark) 0.75f else 0.36f),
         )
         .clip(shape)
         .background(glass)
-        .drawBehind { drawRect(gloss) }
+        .drawBehind {
+            drawRect(sheen)
+            // 底下这道反光只给玻璃用：彩色的 FAB 加上去会泛白发粉
+            if (!tinted) drawRect(innerGlow)
+        }
+        .border(1.dp, edge, shape)
 }
 
 @Composable
