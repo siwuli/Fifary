@@ -61,11 +61,9 @@ fun Bubble(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val caustic = OplusCaustic.enabled
     Box(
         modifier
-            // ColorOS 那条路会由系统画阴影和焦散，自己的投影要让开，不然叠两层
-            .bubble(shape, color, if (caustic) 0.dp else elevation)
+            .bubble(shape, color, elevation)
             .graphicsLayer { alpha = if (enabled) 1f else 0.38f }
             .then(
                 if (onClick != null) {
@@ -75,10 +73,6 @@ fun Bubble(
                 }
             ),
         contentAlignment = contentAlignment,
-    ) {
-        content()
-        // 只有真的去挂系统焦散时才加这层 View：关着的时候一个多余的 View 都不要，
-        // 否则和原来相比就是多了一层原生 View，手机上会多出无谓的开销
-        if (caustic) CausticOutline(shape, color, Modifier.matchParentSize())
-    }
+        content = content,
+    )
 }
