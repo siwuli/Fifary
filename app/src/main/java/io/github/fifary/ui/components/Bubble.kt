@@ -27,13 +27,26 @@ import androidx.compose.ui.unit.dp
 fun Modifier.bubble(
     shape: Shape,
     color: Color = MaterialTheme.colorScheme.surface,
-    elevation: Dp = 10.dp,
+    elevation: Dp = 12.dp,
 ): Modifier {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val gloss = remember(dark) {
+    // 彩色气泡（琥珀色 FAB、完成按钮）上白色高光减半，不然顶上一片发白像褪色
+    val chroma = maxOf(color.red, color.green, color.blue) - minOf(color.red, color.green, color.blue)
+    val tinted = chroma > 0.08f
+    val shine = if (tinted) 0.45f else 1f
+    // 上沿亮、下沿一点点暗，表面才有从光到影的落差；原来是整片均亮的平涂
+    val gloss = remember(dark, shine) {
         Brush.verticalGradient(
-            0f to Color.White.copy(alpha = if (dark) 0.07f else 0.30f),
-            0.65f to Color.Transparent,
+            0f to Color.White.copy(alpha = (if (dark) 0.09f else 0.34f) * shine),
+            0.55f to Color.Transparent,
+            1f to Color.Black.copy(alpha = (if (dark) 0.10f else 0.04f) * shine),
+        )
+    }
+    // 上沿一道极细的高光压边，光是从上面来的那种感觉
+    val rim = remember(dark, shine) {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = (if (dark) 0.10f else 0.55f) * shine),
+            0.35f to Color.Transparent,
         )
     }
     return this
@@ -41,13 +54,17 @@ fun Modifier.bubble(
             elevation = elevation,
             shape = shape,
             clip = false,
-            ambientColor = Color.Black.copy(alpha = if (dark) 0.50f else 0.10f),
-            spotColor = Color.Black.copy(alpha = if (dark) 0.60f else 0.16f),
+            // 投影再散一点、深一点：10dp 那档在灰底上几乎看不出来，气泡就贴住了
+            ambientColor = Color.Black.copy(alpha = if (dark) 0.55f else 0.14f),
+            spotColor = Color.Black.copy(alpha = if (dark) 0.70f else 0.24f),
         )
         .clip(shape)
         .background(color)
-        .drawBehind { drawRect(gloss) }
-        .then(if (dark) Modifier.border(1.dp, Color.White.copy(alpha = 0.08f), shape) else Modifier)
+        .drawBehind {
+            drawRect(gloss)
+            drawRect(rim)
+        }
+        .then(if (dark) Modifier.border(1.dp, Color.White.copy(alpha = 0.10f), shape) else Modifier)
 }
 
 @Composable
@@ -55,7 +72,7 @@ fun Bubble(
     shape: Shape,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.surface,
-    elevation: Dp = 10.dp,
+    elevation: Dp = 12.dp,
     contentAlignment: Alignment = Alignment.Center,
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
