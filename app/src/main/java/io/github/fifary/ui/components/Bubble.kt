@@ -61,11 +61,9 @@ fun Bubble(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    // ColorOS 上系统会往轮廓外画焦散阴影，那边就不要再叠我们自己的投影
-    val caustic = OplusCaustic.available
     Box(
         modifier
-            .bubble(shape, color, if (caustic) 0.dp else elevation)
+            .bubble(shape, color, elevation)
             .graphicsLayer { alpha = if (enabled) 1f else 0.38f }
             .then(
                 if (onClick != null) {
@@ -77,6 +75,6 @@ fun Bubble(
         contentAlignment = contentAlignment,
     ) {
         content()
-        if (caustic) CausticOutline(shape, color, Modifier.matchParentSize())
+        CausticOutline(shape, Modifier.matchParentSize())
     }
 }
