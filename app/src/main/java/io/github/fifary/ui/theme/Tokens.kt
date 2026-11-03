@@ -32,5 +32,5 @@ object Elev {
     val floating = 8.dp
     val chip = 2.dp
     // 气泡悬浮：投影要大要散，参考 App 的悬浮件在 20~37dp 这一档
-    val bubble = 18.dp
+    val bubble = 12.dp
 }
