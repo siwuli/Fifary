@@ -4,6 +4,7 @@ import io.github.fifary.ui.S
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -57,7 +58,8 @@ fun CircleIconButton(icon: ImageVector, label: String, onClick: () -> Unit, subt
     }
 }
 
-// 胶囊：选中白底+阴影，未选中浅灰底——都做成气泡，不然一排就是一片贴纸
+// 胶囊：未选中就是一格平的灰底，不投影也不描边（铺在最下面一层）；
+// 选中那颗才做成气泡，有投影和上沿高光，看着是凸起来的
 @Composable
 fun Capsule(
     selected: Boolean,
@@ -65,18 +67,30 @@ fun Capsule(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Bubble(
-        shape = CircleShape,
-        color = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
-        elevation = if (selected) Elev.bubble else Elev.chip,
-        modifier = modifier.height(Size.chipHeight),
-        onClick = onClick,
-    ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
+    if (selected) {
+        Bubble(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            elevation = Elev.bubble,
+            modifier = modifier.height(Size.chipHeight),
+            onClick = onClick,
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
+    } else {
+        Box(
+            modifier
+                .height(Size.chipHeight)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, content = content)
+        }
     }
 }
 

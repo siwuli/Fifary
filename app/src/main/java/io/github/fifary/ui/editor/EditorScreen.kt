@@ -373,21 +373,26 @@ fun EditorScreen(
             modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),
         )
 
-        RichBody(
-            markdown = initial,
-            dark = LocalDarkTheme.current,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            onReady = { page = it },
-        )
-
+        // 正文铺满到底、工具条浮在它上面（不再单独占一行），正文就能一直排到屏幕底部
         Box(
             Modifier
                 .fillMaxWidth()
-                .padding(start = Space.m, end = Space.m, bottom = Space.xs),
-            contentAlignment = Alignment.Center,
+                .weight(1f),
         ) {
+            RichBody(
+                markdown = initial,
+                dark = LocalDarkTheme.current,
+                modifier = Modifier.fillMaxSize(),
+                onReady = { page = it },
+            )
+
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(start = Space.m, end = Space.m, bottom = Space.xs),
+                contentAlignment = Alignment.Center,
+            ) {
             Column(
                 Modifier
                     // 平时是居中的小胶囊，点开面板才铺满整宽（参考同样是底部整宽面板）
@@ -399,7 +404,7 @@ fun EditorScreen(
                     when (current) {
                         Panel.NONE -> Row(
                             Modifier
-                                .height(64.dp)
+                                .height(48.dp)
                                 .horizontalScroll(rememberScrollState())
                                 .padding(horizontal = 10.dp),
                             horizontalArrangement = Arrangement.spacedBy(Space.xxs),
@@ -547,6 +552,7 @@ fun EditorScreen(
                         }
                     }
                 }
+            }
             }
         }
     }
