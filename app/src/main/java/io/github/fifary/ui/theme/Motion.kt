@@ -10,8 +10,6 @@ object Motion {
     val ExitEasing = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
 
     val PressSpring = spring<Float>(dampingRatio = 0.55f, stiffness = 700f)
-    // 果冻按压：阻尼压低才弹得出来，回弹过头一点点才是胶体而不是塑料
-    val JellySpring = spring<Float>(dampingRatio = 0.34f, stiffness = 800f)
     val PageSpring = spring<Float>(dampingRatio = 0.90f, stiffness = 380f)
     // 顶栏返回：比手势手感更快一点，收尾不拖泥带水
     val BackSpring = spring<Float>(dampingRatio = 0.95f, stiffness = 620f)
