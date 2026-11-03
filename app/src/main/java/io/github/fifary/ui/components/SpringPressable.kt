@@ -34,7 +34,8 @@ fun Modifier.springPressable(
 
     this
         .graphicsLayer {
-            scaleX = scale
+            // 果冻不等比缩：竖着压扁、横着鼓出来，弹回时才有胶体的形变
+            scaleX = 1f + (1f - scale) * 2.2f
             scaleY = scale
         }
         .pointerInput(Unit) {
