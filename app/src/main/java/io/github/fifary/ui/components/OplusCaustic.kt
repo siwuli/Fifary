@@ -1,6 +1,7 @@
 package io.github.fifary.ui.components
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Outline
 import android.os.Handler
 import android.os.Looper
@@ -13,20 +14,20 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.viewinterop.AndroidView
 
-// 参考 App 那圈「按钮外面下方透过去的高光 + 两侧阴影」是 ColorOS 系统的焦散阴影：
-// 解包 com.coui.appcompat.causticshadow.COUICausticShadowEffect 里，它反射
-// com.oplus.view.material.OplusMaterialUtil.setOutlineCausticShadow*。
-// 真机上这个类和方法都在（调试页能看到），但直接调会闪退，所以：
-//  · 默认关，只有用户在调试页手动打开才调；
-//  · 打开时先写"未确认"，活过 8 秒才转成"已确认"；下次启动如果看到"未确认"，说明上次崩了，
-//    自动关掉并记录下来——这样即使系统接口有毒，也只是崩一次，不会变成开不了机。
+// 参考 App 的悬浮气泡效果，是照它解包里的 COUIFABShadowUtils 一步步抄下来的：
+//  1. View.setElevation(8dp) + setOutlineAmbient/SpotShadowColor(#1E000000)
+//  2. new OplusView(view).setOverrideLightSourceGeometry(-1, -600dp, 0, 600dp, 0)  ← 光照几何，没有这步焦散不画
+//  3. setOutlineCausticShadowColor(argb(153, 归一化后的强调色))
+//     setOutlineCausticShadowLayout(4dp, 0, -4dp, 11.2dp)
+//     setOutlineCausticShadowParams(14dp, 0.3, 0.2, 1.4, 0.45, 0.6)
+// 数值全部来自参考包的资源（coui_shadow_*_caustic_fab / coui_caustic_layout_*_level6）。
+// 只有 ColorOS 有这些系统类；拿不到就整块跳过。默认关闭，调试页可开；开启后 8 秒内没崩才算确认。
 private val INT: Class<*> = Int::class.javaPrimitiveType!!
 private val FLOAT: Class<*> = Float::class.javaPrimitiveType!!
 
@@ -38,17 +39,24 @@ internal object OplusCaustic {
     private val util: Class<*>? by lazy {
         runCatching { Class.forName("com.oplus.view.material.OplusMaterialUtil") }.getOrNull()
     }
-    private val setColor by lazy { method("setOutlineCausticShadowColor", INT) }
-    private val getColor by lazy {
-        runCatching { util?.getMethod("getOutlineCausticShadowColor", View::class.java) }.getOrNull()
-    }
-    private val setLayout by lazy { method("setOutlineCausticShadowLayout", INT, INT, INT, INT) }
-    private val setParams by lazy {
-        method("setOutlineCausticShadowParams", FLOAT, FLOAT, FLOAT, FLOAT, FLOAT, FLOAT)
+    private val oplusView: Class<*>? by lazy {
+        runCatching { Class.forName("com.oplus.view.OplusView") }.getOrNull()
     }
 
     private fun method(name: String, vararg types: Class<*>): java.lang.reflect.Method? =
         runCatching { util?.getMethod(name, View::class.java, *types) }.getOrNull()
+
+    private val setColor by lazy { method("setOutlineCausticShadowColor", INT) }
+    private val setLayout by lazy { method("setOutlineCausticShadowLayout", INT, INT, INT, INT) }
+    private val setParams by lazy {
+        method("setOutlineCausticShadowParams", FLOAT, FLOAT, FLOAT, FLOAT, FLOAT, FLOAT)
+    }
+    private val lightGeometry by lazy {
+        val cls = oplusView ?: return@lazy null
+        runCatching {
+            cls.getMethod("setOverrideLightSourceGeometry", FLOAT, INT, INT, INT, INT)
+        }.getOrNull()
+    }
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -57,67 +65,73 @@ internal object OplusCaustic {
     var enabled by mutableStateOf(false)
         private set
 
-    private var appContext: Context? = null
-
     fun boot(ctx: Context) {
-        appContext = ctx.applicationContext
         val sp = prefs(ctx)
         if (sp.getBoolean(KEY_ON, false) && sp.getBoolean(KEY_UNCONFIRMED, false)) {
-            // 上次开了以后没活过 8 秒 = 崩了，直接关掉
             sp.edit().putBoolean(KEY_ON, false).putBoolean(KEY_UNCONFIRMED, false).apply()
             report = "上次开启后崩溃，已自动关闭"
+        } else {
+            report = if (util == null) "无系统类" else "未挂载"
         }
         enabled = sp.getBoolean(KEY_ON, false)
-        if (util == null) report = "无系统类"
     }
 
     fun toggle(ctx: Context) {
         val sp = prefs(ctx)
         val on = !sp.getBoolean(KEY_ON, false)
-        sp.edit()
-            .putBoolean(KEY_ON, on)
-            .putBoolean(KEY_UNCONFIRMED, on)
-            .apply()
+        sp.edit().putBoolean(KEY_ON, on).putBoolean(KEY_UNCONFIRMED, on).apply()
         enabled = on
         if (!on) {
             report = "已关闭"
             return
         }
         report = "已开启，等待确认"
-        // 活下来就算确认：8 秒后把"未确认"清掉
         Handler(Looper.getMainLooper()).postDelayed({
             prefs(ctx).edit().putBoolean(KEY_UNCONFIRMED, false).apply()
             report = "已开启（已确认）"
         }, 8000)
     }
 
-    fun apply(view: View, color: Color) {
+    // 参考包 COUICausticShadowEffect.convertCausticShadowColor：把颜色压到亮度 80，免得焦散过曝
+    private fun causticColor(argb: Int): Int {
+        val r = Color.red(argb).toFloat()
+        val g = Color.green(argb).toFloat()
+        val b = Color.blue(argb).toFloat()
+        val luma = 0.299f * r + 0.587f * g + 0.114f * b
+        if (luma == 0f) return Color.parseColor("#828282")
+        if (luma == 255f) return Color.parseColor("#0B0B0B")
+        fun clamp(v: Float) = v.coerceIn(0f, 255f).toInt()
+        return Color.rgb(clamp(r * 80f / luma), clamp(g * 80f / luma), clamp(b * 80f / luma))
+    }
+
+    fun apply(view: View, color: androidx.compose.ui.graphics.Color) {
         if (!enabled) return
         val set = setColor ?: return
         if (view.width <= 0 || view.height <= 0 || !view.isAttachedToWindow) return
         val d = view.resources.displayMetrics.density
-        runCatching {
-            // 先配 sdf 和位移，最后上色，再刷一帧；上一版顺序反过来、且载体是 disabled 的 View，
-            // 系统可能直接跳过不画
-            setParams?.invoke(null, view, 9.23f * d, 0.6f, 0.6f, 18f, 0.45f, 0.6f)
-            setLayout?.invoke(null, view, 0, 0, 0, (4.3f * d).toInt())
-            set.invoke(null, view, color.toArgb())
-            view.invalidate()
-            // 回读一次：系统认了才有意义，没认说明接口对第三方是空的
-            val want = color.toArgb()
-            val got = runCatching { getColor?.invoke(null, view) as? Int }.getOrNull()
-            report = when (got) {
-                null -> "已设置,无回读"
-                want -> "v2 已生效"
-                else -> "回读=" + Integer.toHexString(got)
+        val e = causticColor(color.toArgb())
+        report = runCatching {
+            view.elevation = 8f * d
+            view.outlineAmbientShadowColor = 0x1E000000
+            view.outlineSpotShadowColor = 0x1E000000
+            // 光照几何：没有这一笔，焦散只是被系统存下来，不会画
+            val cls = oplusView
+            if (cls != null) {
+                val wrapper = cls.getConstructor(View::class.java).newInstance(view)
+                lightGeometry?.invoke(wrapper, -1f, (-600f * d).toInt(), 0, (600f * d).toInt(), 0)
             }
-        }.getOrElse { report = "异常:" + (it.message ?: it.javaClass.simpleName).take(40) }
+            set.invoke(null, view, Color.argb(153, Color.red(e), Color.green(e), Color.blue(e)))
+            setLayout?.invoke(null, view, (4f * d).toInt(), 0, (-4f * d).toInt(), (11.2f * d).toInt())
+            setParams?.invoke(null, view, 14f * d, 0.3f, 0.2f, 1.4f, 0.45f, 0.6f)
+            view.invalidate()
+            "已挂载(光照=" + if (oplusView == null) "无" else "有" + ")"
+        }.getOrElse { "异常:" + (it.message ?: it.javaClass.simpleName).take(40) }
     }
 }
 
-// 透明的轮廓载体：系统把焦散画在这个 View 的 outline 外面，本体还是 Compose 画的
+// 轮廓载体：本体还是 Compose 画的，这层只把 outline 和系统光影借过来
 @Composable
-internal fun CausticOutline(shape: Shape, color: Color, modifier: Modifier) {
+internal fun CausticOutline(shape: Shape, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
     val currentColor by rememberUpdatedState(color)
@@ -125,7 +139,6 @@ internal fun CausticOutline(shape: Shape, color: Color, modifier: Modifier) {
         modifier = modifier,
         factory = { ctx ->
             View(ctx).apply {
-                // 不 disable：系统效果可能会跳过 disabled 的 View；只要不可点击就够，触摸照旧交给 Compose
                 isClickable = false
                 isFocusable = false
                 background = android.graphics.drawable.GradientDrawable().apply { setColor(0x01FFFFFF) }
