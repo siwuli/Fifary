@@ -4,7 +4,7 @@ import io.github.fifary.ui.S
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -265,11 +265,19 @@ fun CategoryManagerScreen(
                                     dragOffset = dragOffset,
                                     shift = shift.value,
                                     onMeasured = { rowPx = it },
-                                    onToggle = { if (editing) toggle(entry.path) else onOpenCategory(entry.path) },
+                                    // 正在拖的时候别处的手指不算点击/长按，否则一碰就跳进选中态、
+                                    // 把手从界面上消失，手里的拖动被取消
+                                    onToggle = {
+                                        if (dragging == null) {
+                                            if (editing) toggle(entry.path) else onOpenCategory(entry.path)
+                                        }
+                                    },
                                     onLongPress = {
-                                        haptics.longPress()
-                                        editing = true
-                                        selected = setOf(entry.path)
+                                        if (dragging == null) {
+                                            haptics.longPress()
+                                            editing = true
+                                            selected = setOf(entry.path)
+                                        }
                                     },
                                     onHaptics = { haptics.longPress() },
                                     onDragStart = { y ->
@@ -609,8 +617,7 @@ private fun DragRow(
             .fillMaxWidth()
             .graphicsLayer { translationY = if (lifted) dragOffset else shift }
             .onSizeChanged { onMeasured(it.height.toFloat()) }
-            .springPressable(onLongPress = onLongPress, onClick = onToggle)
-            .padding(horizontal = Space.l, vertical = 18.dp),
+            .padding(horizontal = Space.l),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!editing) {
@@ -618,13 +625,13 @@ private fun DragRow(
             DotsGlyph(
                 Modifier
                     .size(20.dp)
-                    .semantics { contentDescription = S("拖动排序") }
+                    .semantics { contentDescription = S("长按拖动排序") }
                     .onGloballyPositioned { at = it }
                     .pointerInput(Unit) {
-                        // 一次只认一根手指：第二根手指按到别的把手上时整段手势让开，
+                        // 长按才起拖，且一次只认一根手指：第二根手指按到别的把手上时整段手势让开，
                         // 否则两路手势抢同一份 dragOffset，行不跟手、松手还会跳位
                         var owned = false
-                        detectDragGestures(
+                        detectDragGesturesAfterLongPress(
                             onDragStart = { down ->
                                 // 手指在窗口里的位置：拖到屏幕边缘时靠它判断要不要滚屏
                                 owned = onDragStart(at?.localToRoot(down)?.y ?: 0f)
@@ -642,30 +649,39 @@ private fun DragRow(
             )
             Spacer(Modifier.width(Space.xs))
         }
-        NotebookGlyph(size = 20)
-        Spacer(Modifier.width(Space.s))
-        Text(
-            text = entry.name,
-            style = MaterialTheme.typography.titleMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = "${entry.noteCount}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.outline,
-        )
-        if (editing) {
+        // 名字这一侧才是"点一下打开 / 长按选中"的区域，把手单独一套手势
+        Row(
+            Modifier
+                .weight(1f)
+                .springPressable(onLongPress = onLongPress, onClick = onToggle)
+                .padding(vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NotebookGlyph(size = 20)
             Spacer(Modifier.width(Space.s))
-            SelectCheck(selected)
-        } else {
-            Icon(
-                Icons.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(18.dp),
+            Text(
+                text = entry.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            Text(
+                text = "${entry.noteCount}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            if (editing) {
+                Spacer(Modifier.width(Space.s))
+                SelectCheck(selected)
+            } else {
+                Icon(
+                    Icons.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }

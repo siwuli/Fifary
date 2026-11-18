@@ -98,7 +98,14 @@ function listRun(L, cur) {
   function closeOne() { var e = stack.pop(); out += '</li></' + e.tag + '>'; }
   while (cur.i < L.length) {
     var raw = L[cur.i], t = raw.trim();
-    if (t === '') { cur.i++; continue; }
+    // 空行后面还是列表项才算列表内部的松行；否则这次列表到此为止，
+    // 空行留给外层当空段落，不然列表后面那个空行一读就没、存回去也少一行
+    if (t === '') {
+      var j = cur.i;
+      while (j < L.length && L[j].trim() === '') j++;
+      if (j < L.length && /^([-*+]|\d+\.)(\s|$)/.test(L[j].trim())) { cur.i = j; continue; }
+      break;
+    }
     // 只有标记没有内容也算一项（回车新起的那一行），不然它会变成正文里一个「-」
     var m = t.match(/^([-*+]|\d+\.)(?:\s+(.*))?$/);
     if (!m) break;
@@ -404,6 +411,43 @@ function syncSel() {
 }
 
 document.addEventListener('selectionchange', syncSel);
+
+// 复制自己拼：浏览器默认把每个块按 HTML 拼成文本，一个换行会粘成三行。
+// 这里一块一行、块内 <br> 一个换行，空段落就是空行，和正文看到的行数一一对上
+function plainText(n) {
+  var s = '';
+  for (var i = 0; i < n.childNodes.length; i++) {
+    var c = n.childNodes[i];
+    if (c.nodeType === 3) { s += c.nodeValue; continue; }
+    if (c.nodeType !== 1) continue;
+    if (c.nodeName === 'INPUT') continue;
+    if (c.nodeName === 'BR') { s += '\n'; continue; }
+    if (c.classList && c.classList.contains('player')) { s += c.getAttribute('data-label') || ''; continue; }
+    s += plainText(c);
+  }
+  return s;
+}
+
+document.addEventListener('copy', function (e) {
+  var s = window.getSelection();
+  if (!s || !s.rangeCount || s.isCollapsed || !e.clipboardData) return;
+  var box = document.createElement('div');
+  box.appendChild(s.getRangeAt(0).cloneContents());
+  var out = [];
+  for (var i = 0; i < box.childNodes.length; i++) {
+    var n = box.childNodes[i];
+    if (n.nodeType === 3) { if (n.nodeValue.trim()) out.push(n.nodeValue.trim()); continue; }
+    if (n.nodeType !== 1 || n.nodeName === 'INPUT') continue;
+    if (/^(UL|OL)$/.test(n.nodeName)) {
+      for (var k = 0; k < n.children.length; k++) out.push(plainText(n.children[k]).trim());
+      continue;
+    }
+    out.push(plainText(n).trim());
+  }
+  if (!out.length) return;
+  e.clipboardData.setData('text/plain', out.join('\n'));
+  e.preventDefault();
+});
 
 // 面板一开正文只剩一小条，改完那一行要自己滚进来，不然看着像没改
 function see(el) {
