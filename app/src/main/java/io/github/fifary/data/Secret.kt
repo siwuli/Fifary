@@ -25,7 +25,9 @@ object Secret {
     private const val KEY_BYTES = 32
     private const val PREFIX = "f2"
     private const val BIO_PREFIX = "b"
-    private const val BIO_ALIAS = "fifary.vault.bio"
+    // v2：1.2.4 那把钥匙是「每次用都要认证」的老规格，换别名免得被它拖住
+    private const val BIO_ALIAS = "fifary.vault.bio2"
+    private const val BIO_ALIAS_OLD = "fifary.vault.bio"
     private const val BIO_SECONDS = 20
 
     private val random = SecureRandom()
@@ -112,7 +114,12 @@ object Secret {
     }.getOrNull()
 
     fun bioForget() {
-        runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(BIO_ALIAS) }
+        runCatching {
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.let {
+                it.deleteEntry(BIO_ALIAS)
+                it.deleteEntry(BIO_ALIAS_OLD)
+            }
+        }
     }
 
     // 自检：换一把密钥必须解不开（GCM 校验会失败），换密码必须还能解开数据密钥
