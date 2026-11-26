@@ -203,7 +203,7 @@ fun SettingsScreen(
                             bioEnroll(
                                 context,
                                 onOk = { toast(S("指纹解锁已开启")) },
-                                onFail = { message -> toast(message) },
+                                onFail = { message -> message?.let(toast) },
                             )
                         }
                     }

@@ -416,9 +416,9 @@ fun bioAvailable(context: Context): Boolean =
     BiometricManager.from(context)
         .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
 
-// 系统验过指纹之后 Keystore 那把钥匙才解锁，验不过这里不会被调用
-fun bioUnlock(context: Context, onOk: () -> Unit, onFail: (String) -> Unit) {
-    val blob = SettingsStore.secretBio ?: return
+// 系统指纹过了才解开 Keystore 那一层；onFail 的 null = 用户自己退回，不用报错
+fun bioUnlock(context: Context, onOk: () -> Unit, onFail: (String?) -> Unit) {
+    val blob = SettingsStore.secretBio ?: return onFail(null)
     biometric(context, onFail) {
         val dataKey = Secret.bioUnwrap(blob)
         if (dataKey == null) {
@@ -432,9 +432,8 @@ fun bioUnlock(context: Context, onOk: () -> Unit, onFail: (String) -> Unit) {
     }
 }
 
-// 只负责「验一次指纹」，验过了回调里立刻加解密
-fun bioEnroll(context: Context, onOk: () -> Unit, onFail: (String) -> Unit) {
-    val dataKey = PrivateVault.key ?: return
+fun bioEnroll(context: Context, onOk: () -> Unit, onFail: (String?) -> Unit) {
+    val dataKey = PrivateVault.key ?: return onFail(null)
     biometric(context, onFail) {
         val blob = Secret.bioWrap(dataKey)
         if (blob == null) {
@@ -446,7 +445,8 @@ fun bioEnroll(context: Context, onOk: () -> Unit, onFail: (String) -> Unit) {
     }
 }
 
-private fun biometric(context: Context, onFail: (String) -> Unit, onOk: () -> Unit) {
+// 只负责「验一次指纹」，验过了回调里再加解密
+private fun biometric(context: Context, onFail: (String?) -> Unit, onOk: () -> Unit) {
     val activity = context.fragmentActivity() ?: return onFail(S("这台设备没有指纹"))
     BiometricPrompt(
         activity,
@@ -455,7 +455,7 @@ private fun biometric(context: Context, onFail: (String) -> Unit, onOk: () -> Un
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onOk()
 
             override fun onAuthenticationError(code: Int, message: CharSequence) {
-                if (!cancelled(code)) onFail(message.toString())
+                onFail(if (cancelled(code)) null else message.toString())
             }
         },
     ).authenticate(promptInfo())

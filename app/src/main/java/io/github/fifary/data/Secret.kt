@@ -1,6 +1,5 @@
 package io.github.fifary.data
 
-import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
@@ -24,11 +23,13 @@ object Secret {
     private const val TAG_BITS = 128
     private const val KEY_BYTES = 32
     private const val PREFIX = "f2"
-    private const val BIO_PREFIX = "b"
-    // v2：1.2.4 那把钥匙是「每次用都要认证」的老规格，换别名免得被它拖住
-    private const val BIO_ALIAS = "fifary.vault.bio2"
-    private const val BIO_ALIAS_OLD = "fifary.vault.bio"
-    private const val BIO_SECONDS = 20
+    // b2 = 2 版格式（v1 的 blob 用老钥匙包的，解不开就别再试）
+    private const val BIO_PREFIX = "b2"
+    // shortcut: 这把钥匙只锁在系统 Keystore 里，不再要求「每次用都要系统认证」——
+    // 那条路在部分机型上验过指纹仍报未认证（1.2.4/1.2.5 的 bug）。指纹现在是 app 层的门，
+    // 要更硬的绑定（CryptoObject）得等确认目标机型支持后再加
+    private const val BIO_ALIAS = "fifary.vault.bio3"
+    private val BIO_OLD = listOf("fifary.vault.bio", "fifary.vault.bio2")
 
     private val random = SecureRandom()
     private val encoder = Base64.getEncoder()
@@ -77,28 +78,19 @@ object Secret {
         null
     }
 
-    // 指纹解锁：数据密钥再用一把 Keystore 密钥包一层，密钥不出系统。
-    // 这把密钥「系统刚验过指纹的 BIO_SECONDS 秒内可用」，所以不把 cipher 绑到弹窗上——
-    // 那种 CryptoObject 写法在部分机型上验过指纹仍报未认证，正是「验过了却说没解开」的来源
+    // 指纹解锁：数据密钥再用一把 Keystore 密钥包一层，这把密钥不出系统，也拷不走。
+    // 层内不再叠加「每次用都要系统认证」——见下面 BIO_ALIAS 的注释
     private fun bioKey(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getEntry(BIO_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
         val spec = KeyGenParameterSpec.Builder(BIO_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setUserAuthenticationRequired(true)
-        if (Build.VERSION.SDK_INT >= 30) {
-            spec.setUserAuthenticationParameters(BIO_SECONDS, KeyProperties.AUTH_BIOMETRIC_STRONG)
-        } else {
-            @Suppress("DEPRECATION")
-            spec.setUserAuthenticationValidityDurationSeconds(BIO_SECONDS)
-        }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
             .apply { init(spec.build()) }
             .generateKey()
     }
 
-    // 两个方向都要在验过指纹之后马上调（几毫秒内），否则系统会抛「未认证」
     fun bioWrap(dataKey: ByteArray): String? = runCatching {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, bioKey()) }
         "$BIO_PREFIX:${encoder.encodeToString(cipher.iv)}:${encoder.encodeToString(cipher.doFinal(dataKey))}"
@@ -113,11 +105,13 @@ object Secret {
         decoder.decode(cipher.doFinal(decoder.decode(parts[2])))
     }.getOrNull()
 
+    // 老版本留下来的 blob（别的钥匙包的）直接当没有，别再让它报「指纹用不了了」
+    fun bioLooksValid(blob: String): Boolean = blob.startsWith("$BIO_PREFIX:")
+
     fun bioForget() {
         runCatching {
-            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.let {
-                it.deleteEntry(BIO_ALIAS)
-                it.deleteEntry(BIO_ALIAS_OLD)
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.let { store ->
+                (BIO_OLD + BIO_ALIAS).forEach { store.deleteEntry(it) }
             }
         }
     }

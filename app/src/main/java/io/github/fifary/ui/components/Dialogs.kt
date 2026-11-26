@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -152,6 +153,8 @@ internal enum class PasswordAsk { SET, VERIFY }
 class SecretGate internal constructor() {
     internal var ask by mutableStateOf<PasswordAsk?>(null)
     internal var error by mutableStateOf<String?>(null)
+    // 由 rememberSecretGate 装上的系统指纹：有它就先验指纹，薄片等失败了再出来
+    internal var biometric: (() -> Unit)? = null
     private var pending by mutableStateOf<((ByteArray) -> Unit)?>(null)
 
     fun run(action: (ByteArray) -> Unit) {
@@ -164,10 +167,22 @@ class SecretGate internal constructor() {
             !PrivateVault.unlocked -> {
                 pending = action
                 error = null
-                ask = PasswordAsk.VERIFY
+                val fingerprint = biometric
+                if (fingerprint == null) {
+                    ask = PasswordAsk.VERIFY
+                } else {
+                    ask = null
+                    fingerprint()
+                }
             }
             else -> PrivateVault.key?.let(action)
         }
+    }
+
+    // 指纹没过 / 被取消 / 钥匙解不开：这时候才把键盘薄片放出来
+    internal fun biometricFailed(message: String?) {
+        error = message
+        ask = PasswordAsk.VERIFY
     }
 
     internal fun set(password: String, mode: LockMode) {
@@ -202,23 +217,30 @@ class SecretGate internal constructor() {
 fun rememberSecretGate(): SecretGate {
     val gate = remember { SecretGate() }
     val context = LocalContext.current
+    val fingerprint = PrivateVault.bioEnabled
+    SideEffect {
+        gate.biometric = if (fingerprint) {
+            {
+                bioUnlock(
+                    context,
+                    onOk = gate::granted,
+                    onFail = { message -> gate.biometricFailed(message) },
+                )
+            }
+        } else {
+            null
+        }
+    }
     when (gate.ask) {
         PasswordAsk.SET -> LockSetupSheet(onDismiss = gate::dismiss, onDone = gate::set)
-        PasswordAsk.VERIFY -> {
-            val biometric: () -> Unit = {
-                bioUnlock(context, onOk = gate::granted, onFail = { message -> gate.error = message })
-            }
-            // 开了指纹就自己弹系统那套，不用人再点一下
-            LaunchedEffect(Unit) { if (PrivateVault.bioEnabled) biometric() }
-            LockSheet(
-                mode = PrivateVault.mode,
-                pinLen = PrivateVault.pinLen,
-                error = gate.error,
-                onDismiss = gate::dismiss,
-                onSubmit = gate::submit,
-                onBiometric = if (PrivateVault.bioEnabled) biometric else null,
-            )
-        }
+        PasswordAsk.VERIFY -> LockSheet(
+            mode = PrivateVault.mode,
+            pinLen = PrivateVault.pinLen,
+            error = gate.error,
+            onDismiss = gate::dismiss,
+            onSubmit = gate::submit,
+            onBiometric = gate.biometric,
+        )
         null -> Unit
     }
     return gate

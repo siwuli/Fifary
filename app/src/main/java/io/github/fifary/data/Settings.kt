@@ -136,7 +136,11 @@ object SettingsStore {
         secretMode = runCatching { LockMode.valueOf(p.getString("secretMode", null) ?: "") }
             .getOrDefault(LockMode.TEXT)
         secretPinLen = p.getInt("secretPinLen", 0)
-        secretBio = p.getString("secretBio", null)
+        // 老格式的指纹 blob（别的 Keystore 钥匙包的）解不开，直接丢掉，别等人去点才发现
+        secretBio = p.getString("secretBio", null)?.takeIf { Secret.bioLooksValid(it) }
+        if (p.getString("secretBio", null) != null && secretBio == null) {
+            p.edit()?.remove("secretBio")?.apply()
+        }
     }
 
     fun updateSecret(salt: String, wrapped: String, mode: LockMode, pinLen: Int) {
