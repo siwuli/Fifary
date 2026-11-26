@@ -203,25 +203,20 @@ fun rememberSecretGate(): SecretGate {
     val gate = remember { SecretGate() }
     val context = LocalContext.current
     when (gate.ask) {
-        PasswordAsk.SET -> LockSetup(onDismiss = gate::dismiss, onDone = gate::set)
+        PasswordAsk.SET -> LockSetupSheet(onDismiss = gate::dismiss, onDone = gate::set)
         PasswordAsk.VERIFY -> {
-            // 开了指纹就直接弹系统那套，验过了才让 Keystore 把数据密钥交出来
-            LaunchedEffect(Unit) {
-                if (PrivateVault.bioEnabled) {
-                    bioUnlock(
-                        context,
-                        onOk = { gate.granted() },
-                        onFail = { message -> gate.error = message },
-                    )
-                }
+            val biometric: () -> Unit = {
+                bioUnlock(context, onOk = gate::granted, onFail = { message -> gate.error = message })
             }
-            LockEntry(
-                title = S("输入私密密码"),
+            // 开了指纹就自己弹系统那套，不用人再点一下
+            LaunchedEffect(Unit) { if (PrivateVault.bioEnabled) biometric() }
+            LockSheet(
                 mode = PrivateVault.mode,
-                digits = PrivateVault.pinLen,
+                pinLen = PrivateVault.pinLen,
                 error = gate.error,
                 onDismiss = gate::dismiss,
                 onSubmit = gate::submit,
+                onBiometric = if (PrivateVault.bioEnabled) biometric else null,
             )
         }
         null -> Unit

@@ -4,6 +4,7 @@ import io.github.fifary.ui.S
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,12 @@ fun FifaryApp() {
         val inPrivate = privateArea(navigator.stack.last())
         DisposableEffect(inPrivate) {
             onDispose { if (inPrivate) PrivateVault.lock() }
+        }
+
+        // 一进私密区就自己弹验证，不用再点一下；取消之后那一下留给页面上的按钮。
+        // 放在这里而不是列表页：列表页在后台栈里还挂着，别的地方不该突然冒出一张验证薄片
+        LaunchedEffect(inPrivate, PrivateVault.unlocked) {
+            if (inPrivate && !PrivateVault.unlocked) gate.run { }
         }
 
         DisposableEffect(lifecycle) {

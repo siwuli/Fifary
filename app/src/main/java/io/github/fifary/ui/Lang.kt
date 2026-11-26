@@ -236,6 +236,10 @@ object Lang {
         "解锁私密笔记" to "Unlock private notes",
         "用密码" to "Use password",
         "输入密码进入私密笔记" to "Enter the password to open private notes",
+        "输入私密锁" to "Enter your private lock",
+        "指纹" to "Fingerprint",
+        "删除" to "Delete",
+        "指纹用不了了，用下面的密码进" to "Fingerprint no longer works, use the code below",
     )
 }
 

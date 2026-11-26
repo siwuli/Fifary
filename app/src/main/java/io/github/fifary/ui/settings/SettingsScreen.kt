@@ -47,10 +47,11 @@ import io.github.fifary.data.ThemeMode
 import io.github.fifary.ui.S
 import io.github.fifary.ui.applyLang
 import io.github.fifary.ui.components.InputDialog
-import io.github.fifary.ui.components.LockEntry
-import io.github.fifary.ui.components.LockSetup
+import io.github.fifary.ui.components.LockSetupSheet
+import io.github.fifary.ui.components.LockSheet
 import io.github.fifary.ui.components.bioAvailable
 import io.github.fifary.ui.components.bioEnroll
+import io.github.fifary.ui.components.rememberSecretGate
 import io.github.fifary.ui.components.TextPill
 import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Radius
@@ -78,6 +79,7 @@ fun SettingsScreen(
     onOpenDebug: () -> Unit,
 ) {
     val context = LocalContext.current
+    val gate = rememberSecretGate()
 
     var askSet by remember { mutableStateOf(false) }
     var askOld by remember { mutableStateOf(false) }
@@ -196,12 +198,14 @@ fun SettingsScreen(
                             PrivateVault.forgetBiometric()
                             toast(S("指纹解锁已关闭"))
                         }
-                        !PrivateVault.unlocked -> toast(S("先解锁私密笔记再开指纹"))
-                        else -> bioEnroll(
-                            context,
-                            onOk = { toast(S("指纹解锁已开启")) },
-                            onFail = { message -> toast(message) },
-                        )
+                        // 没解锁就让 gate 先要密码，解锁完直接把系统指纹录入弹出来
+                        else -> gate.run {
+                            bioEnroll(
+                                context,
+                                onOk = { toast(S("指纹解锁已开启")) },
+                                onFail = { message -> toast(message) },
+                            )
+                        }
                     }
                 }
             }
@@ -304,7 +308,7 @@ fun SettingsScreen(
     }
 
     if (askSet) {
-        LockSetup(
+        LockSetupSheet(
             onDismiss = { askSet = false },
             onDone = { value, mode ->
                 if (PrivateVault.setPassword(value, mode)) {
@@ -316,10 +320,9 @@ fun SettingsScreen(
     }
 
     if (askOld) {
-        LockEntry(
-            title = S("输入当前密码"),
+        LockSheet(
             mode = PrivateVault.mode,
-            digits = PrivateVault.pinLen,
+            pinLen = PrivateVault.pinLen,
             error = oldError,
             onDismiss = { askOld = false },
             onSubmit = { value ->
@@ -336,7 +339,7 @@ fun SettingsScreen(
     }
 
     if (askNew) {
-        LockSetup(
+        LockSetupSheet(
             onDismiss = {
                 askNew = false
                 oldPassword = ""

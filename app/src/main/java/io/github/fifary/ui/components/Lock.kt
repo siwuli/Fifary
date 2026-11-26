@@ -12,18 +12,27 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,7 +48,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -50,11 +58,140 @@ import io.github.fifary.data.Secret
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.ui.S
 import io.github.fifary.ui.theme.Radius
-import io.github.fifary.ui.theme.Size
 import io.github.fifary.ui.theme.Space
 
-// 私密锁的输入面板：数字键盘、九点图形、文本密码。三种都只是把同一个密码字符串输进去。
-// 图形密码存的就是点位号码串（1-9），所以换方式等于换密码，底层加密一个字都不用改。
+// 私密锁的输入全在屏幕下方的一张薄片上：标题一行、进度点、下面就是键盘。
+// 数字键盘和九点图形最后都只是同一个密码字符串，底层加密不用区分。
+
+private val KeySize = 68.dp
+
+// 整张薄片的骨架：标题 / 错误提示 / 内容
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LockSheetShell(
+    title: String,
+    error: String?,
+    onDismiss: () -> Unit,
+    action: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = Radius.sheet, topEnd = Radius.sheet),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(bottom = Space.m),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = Space.l),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                action?.invoke()
+                TextButton(onClick = onDismiss) { Text(S("取消")) }
+            }
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = Space.xs),
+                )
+            }
+            content()
+        }
+    }
+}
+
+// 输入进度：pinLen 未知时（设置阶段）就给一个最低位数
+@Composable
+private fun Progress(typed: Int, pinLen: Int) {
+    Row(
+        Modifier.padding(vertical = Space.m),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        repeat(if (pinLen > 0) pinLen else typed.coerceAtLeast(4)) { i ->
+            Box(
+                Modifier
+                    .size(11.dp)
+                    .background(
+                        if (i < typed) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        CircleShape,
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun Key(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(KeySize)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .springPressable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun Keypad(value: String, digits: Int, onChange: (String) -> Unit, onSubmit: () -> Unit) {
+    val submit by rememberUpdatedState(onSubmit)
+    LaunchedEffect(value, digits) { if (digits > 0 && value.length == digits) submit() }
+    Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+        listOf(
+            listOf("1", "2", "3"),
+            listOf("4", "5", "6"),
+            listOf("7", "8", "9"),
+        ).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+                row.forEach { key ->
+                    Key(key) { if (digits <= 0 || value.length < digits) onChange(value + key) }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+            Spacer(Modifier.size(KeySize))
+            Key("0") { if (digits <= 0 || value.length < digits) onChange(value + "0") }
+            Box(
+                Modifier
+                    .size(KeySize)
+                    .clip(CircleShape)
+                    .springPressable(onClick = { onChange(value.dropLast(1)) }),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Backspace,
+                    contentDescription = S("删除"),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
 
 // 九点图形：手指离开才算一条（够 4 个点才收），路径就是号码串
 @Composable
@@ -67,8 +204,9 @@ fun PatternPad(onRelease: (String) -> Unit) {
 
     Canvas(
         Modifier
-            .fillMaxWidth()
-            .height(264.dp)
+            .padding(vertical = Space.m)
+            .fillMaxWidth(0.72f)
+            .aspectRatio(1f)
             .onSizeChanged { cell = it.width / 3f }
             .pointerInput(Unit) {
                 fun hit(p: Offset): Int? {
@@ -102,91 +240,35 @@ fun PatternPad(onRelease: (String) -> Unit) {
                 }
             },
     ) {
-        val radius = cell * 0.13f
+        val radius = cell * 0.115f
         val points = path.map { dot ->
             val i = dot - '1'
             Offset((i % 3 + 0.5f) * cell, (i / 3 + 0.5f) * cell)
         }
         for (k in 1 until points.size) {
-            drawLine(onColor, points[k - 1], points[k], strokeWidth = cell * 0.03f)
+            drawLine(onColor, points[k - 1], points[k], strokeWidth = cell * 0.028f)
         }
         for (i in 0..8) {
             val center = Offset((i % 3 + 0.5f) * cell, (i / 3 + 0.5f) * cell)
             val used = path.contains("${i + 1}")
             drawCircle(
                 color = if (used) onColor else offColor,
-                radius = if (used) radius * 1.3f else radius,
+                radius = if (used) radius * 1.35f else radius,
                 center = center,
             )
         }
     }
 }
 
-// 数字键盘：digits > 0 时数满就自动交（解锁用），= 0 时由对话框的按钮交（设置时还不知道几位）
+// 老密码是文本的用户：换锁之前还得能进得去，所以只在这种情况下出输入框
 @Composable
-fun PinPad(value: String, digits: Int, onChange: (String) -> Unit, onSubmit: () -> Unit) {
-    val submit by rememberUpdatedState(onSubmit)
-    LaunchedEffect(value, digits) { if (digits > 0 && value.length == digits) submit() }
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            Modifier.padding(bottom = Space.xs),
-            horizontalArrangement = Arrangement.spacedBy(Space.xs),
-        ) {
-            repeat(if (digits > 0) digits else value.length.coerceAtLeast(4)) { i ->
-                Box(
-                    Modifier
-                        .size(9.dp)
-                        .background(
-                            if (i < value.length) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            },
-                            CircleShape,
-                        ),
-                )
-            }
-        }
-        val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫")
-        keys.chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                row.forEach { key ->
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        when (key) {
-                            "" -> Box(Modifier.height(Size.touch))
-                            "⌫" -> PadKey("⌫") { onChange(value.dropLast(1)) }
-                            else -> PadKey(key) { if (digits <= 0 || value.length < digits) onChange(value + key) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PadKey(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .padding(Space.xxs)
-            .fillMaxWidth()
-            .height(Size.touch)
-            .clip(CircleShape)
-            .springPressable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.headlineSmall)
-    }
-}
-
-@Composable
-private fun SecretField(value: String, onChange: (String) -> Unit) {
+private fun TextField(value: String, onChange: (String) -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l).padding(top = Space.m),
     ) {
         Box(Modifier.padding(horizontal = Space.m, vertical = Space.s)) {
             if (value.isEmpty()) {
@@ -210,77 +292,46 @@ private fun SecretField(value: String, onChange: (String) -> Unit) {
     }
 }
 
+// 解锁：进私密页就弹这一张，指纹先试，不成再用下面的键盘
 @Composable
-private fun ErrorLine(error: String?) {
-    if (error != null) {
-        Text(
-            text = error,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(bottom = Space.xs),
-        )
-    }
-}
-
-// onDone 带上「刚输完的那串」：图形密码是一次拖出来的，不能等重组后再从 value 里取（会取到上一帧）
-@Composable
-private fun LockBody(
+fun LockSheet(
     mode: LockMode,
-    value: String,
-    onChange: (String) -> Unit,
-    digits: Int,
-    onDone: (String) -> Unit,
-) {
-    when (mode) {
-        LockMode.TEXT -> SecretField(value, onChange)
-        LockMode.PIN -> PinPad(value, digits, onChange) { onDone(value) }
-        LockMode.PATTERN -> PatternPad { onDone(it) }
-    }
-}
-
-// 解锁 / 改密码时输一遍
-@Composable
-fun LockEntry(
-    title: String,
-    mode: LockMode,
-    digits: Int,
+    pinLen: Int,
     error: String?,
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit,
+    onBiometric: (() -> Unit)? = null,
 ) {
     var value by remember(mode) { mutableStateOf("") }
     // 输错就清空重来，别让人一个个删
     LaunchedEffect(error) { if (error != null) value = "" }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(Radius.sheet),
-        containerColor = MaterialTheme.colorScheme.surface,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                ErrorLine(error)
-                LockBody(mode, value, { value = it }, digits) { secret ->
-                    if (secret.isNotEmpty()) onSubmit(secret)
-                }
-            }
+    LockSheetShell(
+        title = S("输入私密锁"),
+        error = error,
+        onDismiss = onDismiss,
+        action = onBiometric?.let {
+            { TextButton(onClick = it) { Text(S("指纹")) } }
         },
-        confirmButton = {
-            if (mode == LockMode.TEXT) {
+    ) {
+        when (mode) {
+            LockMode.TEXT -> {
+                TextField(value) { value = it }
                 TextButton(onClick = { onSubmit(value) }, enabled = value.isNotEmpty()) {
                     Text(S("解锁"))
                 }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(S("取消")) }
-        },
-    )
+            LockMode.PIN -> {
+                Progress(value.length, pinLen)
+                Keypad(value, pinLen, { value = it }) { if (value.isNotEmpty()) onSubmit(value) }
+            }
+            LockMode.PATTERN -> PatternPad { secret -> if (secret.isNotEmpty()) onSubmit(secret) }
+        }
+    }
 }
 
-// 设锁：选方式 → 输一遍 → 再输一遍（文本密码照旧只输一遍）
+// 设锁：选键盘 → 输一遍 → 再输一遍
 @Composable
-fun LockSetup(onDismiss: () -> Unit, onDone: (String, LockMode) -> Unit) {
+fun LockSetupSheet(onDismiss: () -> Unit, onDone: (String, LockMode) -> Unit) {
     var mode by remember { mutableStateOf(LockMode.PIN) }
     var value by remember { mutableStateOf("") }
     var first by remember { mutableStateOf("") }
@@ -292,7 +343,6 @@ fun LockSetup(onDismiss: () -> Unit, onDone: (String, LockMode) -> Unit) {
             value = ""
             return
         }
-        if (mode == LockMode.TEXT) return onDone(secret, mode)
         if (first.isEmpty()) {
             first = secret
             value = ""
@@ -308,57 +358,41 @@ fun LockSetup(onDismiss: () -> Unit, onDone: (String, LockMode) -> Unit) {
         onDone(secret, mode)
     }
 
-    val digits = when {
-        mode != LockMode.PIN -> 0
-        first.isEmpty() -> 0
-        else -> first.length
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(Radius.sheet),
-        containerColor = MaterialTheme.colorScheme.surface,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        title = {
-            Text(
-                text = S(if (first.isEmpty()) "设置私密锁" else "再输一次"),
-                style = MaterialTheme.typography.titleMedium,
-            )
-        },
-        text = {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    LockSheetShell(
+        title = S(if (first.isEmpty()) "设置私密锁" else "再输一次"),
+        error = error,
+        onDismiss = onDismiss,
+    ) {
+        if (first.isEmpty()) {
+            Row(
+                Modifier.padding(bottom = Space.xs),
+                horizontalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                ModePill(S("数字"), mode == LockMode.PIN) {
+                    mode = LockMode.PIN
+                    value = ""
+                    error = null
+                }
+                ModePill(S("图形"), mode == LockMode.PATTERN) {
+                    mode = LockMode.PATTERN
+                    value = ""
+                    error = null
+                }
+            }
+        }
+        when (mode) {
+            LockMode.PATTERN -> PatternPad { next(it) }
+            else -> {
+                Progress(value.length, if (first.isEmpty()) 0 else first.length)
+                Keypad(value, if (first.isEmpty()) 0 else first.length, { value = it }, { next(value) })
                 if (first.isEmpty()) {
-                    Row(
-                        Modifier.padding(bottom = Space.m),
-                        horizontalArrangement = Arrangement.spacedBy(Space.xs),
-                    ) {
-                        listOf(
-                            LockMode.PIN to "数字",
-                            LockMode.PATTERN to "图形",
-                            LockMode.TEXT to "密码",
-                        ).forEach { (kind, label) ->
-                            ModePill(S(label), mode == kind) {
-                                mode = kind
-                                value = ""
-                                first = ""
-                                error = null
-                            }
-                        }
+                    TextButton(onClick = { next(value) }, enabled = value.length >= 4) {
+                        Text(S("下一步"))
                     }
                 }
-                ErrorLine(error)
-                LockBody(mode, value, { value = it }, digits) { next(it) }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { next(value) }, enabled = value.length >= 4) {
-                Text(S(if (first.isEmpty()) "下一步" else "保存"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(S("取消")) }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -368,9 +402,9 @@ private fun ModePill(text: String, selected: Boolean, onClick: () -> Unit) {
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.height(Size.chipHeight),
+        modifier = Modifier.height(34.dp),
     ) {
-        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = Space.m), verticalAlignment = Alignment.CenterVertically) {
             Text(text, style = MaterialTheme.typography.labelMedium)
         }
     }
@@ -382,62 +416,49 @@ fun bioAvailable(context: Context): Boolean =
     BiometricManager.from(context)
         .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
 
-// 用指纹解开 Keystore 那一层，把数据密钥交给 vault
+// 系统验过指纹之后 Keystore 那把钥匙才解锁，验不过这里不会被调用
 fun bioUnlock(context: Context, onOk: () -> Unit, onFail: (String) -> Unit) {
-    val activity = context.fragmentActivity() ?: return
     val blob = SettingsStore.secretBio ?: return
-    val cipher = Secret.bioDecrypt(blob) ?: run {
-        // 指纹被重新录入 / 系统换了密钥：这一层作废，退回密码
-        PrivateVault.forgetBiometric()
-        onFail(S("指纹变了，先输密码解锁"))
-        return
+    biometric(context, onFail) {
+        val dataKey = Secret.bioUnwrap(blob)
+        if (dataKey == null) {
+            // 钥匙被系统换掉了（重新录指纹 / 恢复出厂）：这一层作废，退回键盘
+            PrivateVault.forgetBiometric()
+            onFail(S("指纹用不了了，用下面的密码进"))
+        } else {
+            PrivateVault.adopt(dataKey)
+            onOk()
+        }
     }
-    BiometricPrompt(
-        activity,
-        ContextCompat.getMainExecutor(activity),
-        object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val dataKey = result.cryptoObject?.cipher?.let { Secret.bioUnwrap(it, blob) }
-                if (dataKey == null) {
-                    onFail(S("指纹没解开，先输密码解锁"))
-                } else {
-                    PrivateVault.adopt(dataKey)
-                    onOk()
-                }
-            }
-
-            override fun onAuthenticationError(code: Int, message: CharSequence) {
-                if (!cancelled(code)) onFail(message.toString())
-            }
-        },
-    ).authenticate(promptInfo(), BiometricPrompt.CryptoObject(cipher))
 }
 
-// 开启指纹：先让系统认证一次，再拿那把 Keystore 密钥把数据密钥包起来存
+// 只负责「验一次指纹」，验过了回调里立刻加解密
 fun bioEnroll(context: Context, onOk: () -> Unit, onFail: (String) -> Unit) {
+    val dataKey = PrivateVault.key ?: return
+    biometric(context, onFail) {
+        val blob = Secret.bioWrap(dataKey)
+        if (blob == null) {
+            onFail(S("指纹没开成"))
+        } else {
+            SettingsStore.updateSecretBio(blob)
+            onOk()
+        }
+    }
+}
+
+private fun biometric(context: Context, onFail: (String) -> Unit, onOk: () -> Unit) {
     val activity = context.fragmentActivity() ?: return onFail(S("这台设备没有指纹"))
-    val dataKey = PrivateVault.key ?: return onFail(S("先解锁私密笔记"))
-    val cipher = runCatching { Secret.bioEncrypt() }.getOrNull() ?: return onFail(S("这台设备没有指纹"))
     BiometricPrompt(
         activity,
         ContextCompat.getMainExecutor(activity),
         object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val c = result.cryptoObject?.cipher
-                val blob = c?.let { runCatching { Secret.bioWrap(it, dataKey) }.getOrNull() }
-                if (blob == null) {
-                    onFail(S("指纹没开成"))
-                } else {
-                    SettingsStore.updateSecretBio(blob)
-                    onOk()
-                }
-            }
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onOk()
 
             override fun onAuthenticationError(code: Int, message: CharSequence) {
                 if (!cancelled(code)) onFail(message.toString())
             }
         },
-    ).authenticate(promptInfo(), BiometricPrompt.CryptoObject(cipher))
+    ).authenticate(promptInfo())
 }
 
 private fun promptInfo(): BiometricPrompt.PromptInfo = BiometricPrompt.PromptInfo.Builder()
@@ -446,7 +467,7 @@ private fun promptInfo(): BiometricPrompt.PromptInfo = BiometricPrompt.PromptInf
     .setNegativeButtonText(S("用密码"))
     .build()
 
-// 用户自己取消不是错误，别弹 toast 也不要把指纹关掉
+// 用户自己取消不是错误，别弹提示也不要把指纹关掉
 private fun cancelled(code: Int): Boolean = code == BiometricPrompt.ERROR_USER_CANCELED ||
     code == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
     code == BiometricPrompt.ERROR_CANCELED
