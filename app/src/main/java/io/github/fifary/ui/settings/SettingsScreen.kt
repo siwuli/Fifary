@@ -39,6 +39,7 @@ import io.github.fifary.data.Dav
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.Palette
 import io.github.fifary.data.Palettes
+import io.github.fifary.data.LockMode
 import io.github.fifary.data.PrivateVault
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.data.Storage
@@ -46,6 +47,10 @@ import io.github.fifary.data.ThemeMode
 import io.github.fifary.ui.S
 import io.github.fifary.ui.applyLang
 import io.github.fifary.ui.components.InputDialog
+import io.github.fifary.ui.components.LockEntry
+import io.github.fifary.ui.components.LockSetup
+import io.github.fifary.ui.components.bioAvailable
+import io.github.fifary.ui.components.bioEnroll
 import io.github.fifary.ui.components.TextPill
 import io.github.fifary.ui.components.springPressable
 import io.github.fifary.ui.theme.Radius
@@ -78,6 +83,7 @@ fun SettingsScreen(
     var askOld by remember { mutableStateOf(false) }
     var askNew by remember { mutableStateOf(false) }
     var oldPassword by remember { mutableStateOf("") }
+    var oldError by remember { mutableStateOf<String?>(null) }
     var pickStorage by remember { mutableStateOf(false) }
     var askPath by remember { mutableStateOf(false) }
     var askImport by remember { mutableStateOf(false) }
@@ -174,8 +180,30 @@ fun SettingsScreen(
 
         SectionLabel(S("私密"))
         Group {
-            RowItem(S("私密密码"), S(if (PrivateVault.enabled) "已设置" else "未设置")) {
-                if (PrivateVault.enabled) askOld = true else askSet = true
+            RowItem(S("私密锁"), S(if (PrivateVault.enabled) modeLabel(PrivateVault.mode) else "未设置")) {
+                if (PrivateVault.enabled) {
+                    oldError = null
+                    askOld = true
+                } else {
+                    askSet = true
+                }
+            }
+            if (PrivateVault.enabled && bioAvailable(context)) {
+                Rule()
+                RowItem(S("指纹解锁"), S(if (PrivateVault.bioEnabled) "已开启" else "未开启")) {
+                    when {
+                        PrivateVault.bioEnabled -> {
+                            PrivateVault.forgetBiometric()
+                            toast(S("指纹解锁已关闭"))
+                        }
+                        !PrivateVault.unlocked -> toast(S("先解锁私密笔记再开指纹"))
+                        else -> bioEnroll(
+                            context,
+                            onOk = { toast(S("指纹解锁已开启")) },
+                            onFail = { message -> toast(message) },
+                        )
+                    }
+                }
             }
             if (PrivateVault.unlocked) {
                 Rule()
@@ -276,56 +304,59 @@ fun SettingsScreen(
     }
 
     if (askSet) {
-        InputDialog(
-            title = S("设置私密密码"),
-            placeholder = S("至少 4 位"),
-            confirmText = S("保存"),
-            masked = true,
-            note = S("密码只存在本机，忘了就解不开。"),
+        LockSetup(
             onDismiss = { askSet = false },
-            onConfirm = { value ->
-                if (PrivateVault.setPassword(value)) {
+            onDone = { value, mode ->
+                if (PrivateVault.setPassword(value, mode)) {
                     askSet = false
-                    toast(S("私密密码已设置"))
+                    toast(S("私密锁已设置"))
                 }
             },
         )
     }
 
     if (askOld) {
-        InputDialog(
+        LockEntry(
             title = S("输入当前密码"),
-            placeholder = S("密码"),
-            confirmText = S("下一步"),
-            masked = true,
+            mode = PrivateVault.mode,
+            digits = PrivateVault.pinLen,
+            error = oldError,
             onDismiss = { askOld = false },
-            onConfirm = { value ->
+            onSubmit = { value ->
                 if (PrivateVault.unlock(value)) {
                     oldPassword = value
+                    oldError = null
                     askOld = false
                     askNew = true
                 } else {
-                    toast(S("密码不对"))
+                    oldError = S("密码不对")
                 }
             },
         )
     }
 
     if (askNew) {
-        InputDialog(
-            title = S("设置新密码"),
-            placeholder = S("至少 4 位"),
-            confirmText = S("保存"),
-            masked = true,
-            onDismiss = { askNew = false },
-            onConfirm = { value ->
+        LockSetup(
+            onDismiss = {
                 askNew = false
-                toast(S(if (PrivateVault.changePassword(oldPassword, value)) "密码已修改" else "修改失败，密码没有变"))
+                oldPassword = ""
+            },
+            onDone = { value, mode ->
+                askNew = false
+                toast(S(if (PrivateVault.changePassword(oldPassword, value, mode)) "锁已更换" else "修改失败，密码没有变"))
                 oldPassword = ""
             },
         )
     }
 }
+
+private fun modeLabel(mode: LockMode) = S(
+    when (mode) {
+        LockMode.PIN -> "数字"
+        LockMode.PATTERN -> "图形"
+        LockMode.TEXT -> "密码"
+    },
+)
 
 @Composable
 private fun Label(text: String) {

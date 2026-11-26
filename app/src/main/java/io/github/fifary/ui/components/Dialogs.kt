@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import io.github.fifary.data.LockMode
 import io.github.fifary.data.PrivateVault
 import io.github.fifary.ui.theme.Elev
 import io.github.fifary.ui.theme.Radius
@@ -149,32 +151,49 @@ internal enum class PasswordAsk { SET, VERIFY }
 // 需要密码的动作统一走这里：没设过先设，设了没解锁先解，解锁了直接执行
 class SecretGate internal constructor() {
     internal var ask by mutableStateOf<PasswordAsk?>(null)
+    internal var error by mutableStateOf<String?>(null)
     private var pending by mutableStateOf<((ByteArray) -> Unit)?>(null)
 
     fun run(action: (ByteArray) -> Unit) {
         when {
             !PrivateVault.enabled -> {
                 pending = action
+                error = null
                 ask = PasswordAsk.SET
             }
             !PrivateVault.unlocked -> {
                 pending = action
+                error = null
                 ask = PasswordAsk.VERIFY
             }
             else -> PrivateVault.key?.let(action)
         }
     }
 
+    internal fun set(password: String, mode: LockMode) {
+        if (PrivateVault.setPassword(password, mode)) granted() else error = S("至少 4 位")
+    }
+
     internal fun submit(password: String) {
-        val ok = if (ask == PasswordAsk.SET) PrivateVault.setPassword(password) else PrivateVault.unlock(password)
-        if (!ok) return
+        if (PrivateVault.unlock(password)) {
+            error = null
+            granted()
+        } else {
+            error = S("密码不对，再试一次")
+        }
+    }
+
+    // 指纹已经在系统那边验过了
+    internal fun granted() {
         ask = null
-        pending?.let { it(PrivateVault.key ?: return@let) }
+        error = null
+        pending?.let { action -> PrivateVault.key?.let(action) }
         pending = null
     }
 
     internal fun dismiss() {
         ask = null
+        error = null
         pending = null
     }
 }
@@ -182,24 +201,29 @@ class SecretGate internal constructor() {
 @Composable
 fun rememberSecretGate(): SecretGate {
     val gate = remember { SecretGate() }
+    val context = LocalContext.current
     when (gate.ask) {
-        PasswordAsk.SET -> InputDialog(
-            title = S("设置私密密码"),
-            placeholder = S("至少 4 位"),
-            confirmText = S("保存"),
-            masked = true,
-            note = S("密码只存在本机，忘了就解不开，也没有找回入口。"),
-            onDismiss = gate::dismiss,
-            onConfirm = gate::submit,
-        )
-        PasswordAsk.VERIFY -> InputDialog(
-            title = S("输入私密密码"),
-            placeholder = S("密码"),
-            confirmText = S("解锁"),
-            masked = true,
-            onDismiss = gate::dismiss,
-            onConfirm = gate::submit,
-        )
+        PasswordAsk.SET -> LockSetup(onDismiss = gate::dismiss, onDone = gate::set)
+        PasswordAsk.VERIFY -> {
+            // 开了指纹就直接弹系统那套，验过了才让 Keystore 把数据密钥交出来
+            LaunchedEffect(Unit) {
+                if (PrivateVault.bioEnabled) {
+                    bioUnlock(
+                        context,
+                        onOk = { gate.granted() },
+                        onFail = { message -> gate.error = message },
+                    )
+                }
+            }
+            LockEntry(
+                title = S("输入私密密码"),
+                mode = PrivateVault.mode,
+                digits = PrivateVault.pinLen,
+                error = gate.error,
+                onDismiss = gate::dismiss,
+                onSubmit = gate::submit,
+            )
+        }
         null -> Unit
     }
     return gate

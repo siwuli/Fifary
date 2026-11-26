@@ -23,8 +23,8 @@ android {
         applicationId = "io.github.fifary"
         minSdk = 26
         targetSdk = 36
-        versionCode = 123
-        versionName = "1.2.3"
+        versionCode = 124
+        versionName = "1.2.4"
     }
 
     buildFeatures {
@@ -69,4 +69,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     // WebDAV 要 PROPFIND/MKCOL，HttpURLConnection 只认固定那几个方法
     implementation(libs.okhttp)
+    // 指纹解锁要 BiometricPrompt（要 FragmentActivity 当宿主），fragment 显式升到新版免得被旧传递依赖拖住
+    implementation(libs.biometric)
+    implementation(libs.fragment)
 }

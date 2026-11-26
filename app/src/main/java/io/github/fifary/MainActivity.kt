@@ -1,15 +1,16 @@
 package io.github.fifary
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.enableEdgeToEdge
 import io.github.fifary.data.NotesStore
 import io.github.fifary.data.Secret
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.data.Vault
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity：BiometricPrompt 只收这个当宿主
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

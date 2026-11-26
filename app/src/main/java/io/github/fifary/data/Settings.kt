@@ -103,6 +103,14 @@ object SettingsStore {
         private set
     var secretWrapped by mutableStateOf<String?>(null)
         private set
+    // 锁的输入方式（文本密码 / 数字键盘 / 九点图形）和 PIN 位数，只为决定用哪块键盘
+    var secretMode by mutableStateOf(LockMode.TEXT)
+        private set
+    var secretPinLen by mutableStateOf(0)
+        private set
+    // 指纹包住的同一把数据密钥（Keystore GCM，每次都要系统鉴权）
+    var secretBio by mutableStateOf<String?>(null)
+        private set
 
     fun load(context: Context) {
         if (prefs != null) return
@@ -125,12 +133,28 @@ object SettingsStore {
         folderOrder = (p.getString("folderOrder", "") ?: "").split("\n").filter { it.isNotBlank() }
         secretSalt = p.getString("secretSalt", null)
         secretWrapped = p.getString("secretWrapped", null)
+        secretMode = runCatching { LockMode.valueOf(p.getString("secretMode", null) ?: "") }
+            .getOrDefault(LockMode.TEXT)
+        secretPinLen = p.getInt("secretPinLen", 0)
+        secretBio = p.getString("secretBio", null)
     }
 
-    fun updateSecret(salt: String, wrapped: String) {
+    fun updateSecret(salt: String, wrapped: String, mode: LockMode, pinLen: Int) {
         secretSalt = salt
         secretWrapped = wrapped
-        prefs?.edit()?.putString("secretSalt", salt)?.putString("secretWrapped", wrapped)?.apply()
+        secretMode = mode
+        secretPinLen = pinLen
+        prefs?.edit()
+            ?.putString("secretSalt", salt)
+            ?.putString("secretWrapped", wrapped)
+            ?.putString("secretMode", mode.name)
+            ?.putInt("secretPinLen", pinLen)
+            ?.apply()
+    }
+
+    fun updateSecretBio(blob: String?) {
+        secretBio = blob
+        prefs?.edit()?.putString("secretBio", blob)?.apply()
     }
 
     fun updateThemeMode(mode: ThemeMode) {
