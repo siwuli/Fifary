@@ -240,6 +240,8 @@ object Lang {
         "指纹" to "Fingerprint",
         "删除" to "Delete",
         "指纹用不了了，用下面的密码进" to "Fingerprint no longer works, use the code below",
+        "指纹没解开，用下面的密码进" to "Fingerprint did not unlock, use the code below",
+        "指纹自检" to "Fingerprint self check",
         "指纹没开成" to "Could not turn the fingerprint on",
     )
 }

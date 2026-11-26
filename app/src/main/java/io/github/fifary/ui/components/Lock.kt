@@ -422,9 +422,11 @@ fun bioUnlock(context: Context, onOk: () -> Unit, onFail: (String?) -> Unit) {
     biometric(context, onFail) {
         val dataKey = Secret.bioUnwrap(blob)
         if (dataKey == null) {
-            // 钥匙被系统换掉了（重新录指纹 / 恢复出厂）：这一层作废，退回键盘
+            // 钥匙被系统换掉了（重新录指纹 / 恢复出厂）：这一层作废，退回键盘。
+            // 后面括号里是自检结果，出错时靠它定位
+            val detail = Secret.bioSelfCheck()
             PrivateVault.forgetBiometric()
-            onFail(S("指纹用不了了，用下面的密码进"))
+            onFail("${S("指纹没解开，用下面的密码进")} · $detail")
         } else {
             PrivateVault.adopt(dataKey)
             onOk()

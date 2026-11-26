@@ -15,6 +15,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import io.github.fifary.data.NotesStore
+import io.github.fifary.data.PrivateVault
+import io.github.fifary.data.Secret
 import io.github.fifary.data.SettingsStore
 import io.github.fifary.data.Storage
 import io.github.fifary.data.Vault
@@ -65,6 +67,11 @@ fun DebugScreen(onBack: () -> Unit) {
                 toast(S(if (Vault.selfCheck()) "自检通过" else "自检失败"))
             }
             Rule()
+            RowItem(S("指纹自检"), S(Secret.bioSelfCheck())) {
+                clipboard.setText(AnnotatedString(Secret.bioSelfCheck()))
+                toast(S("已复制"))
+            }
+            Rule()
             RowItem(S("清空回收站")) { askEmpty = true }
             Rule()
             RowItem(S("复制诊断信息")) {
@@ -98,6 +105,7 @@ private fun diagnostics(context: android.content.Context): String = buildString 
     appendLine("lang=${SettingsStore.language} view=${SettingsStore.viewMode} sort=${SettingsStore.sortMode}")
     appendLine("dav=${SettingsStore.davUrl} auto=${SettingsStore.davAuto}")
     appendLine("android=${Build.VERSION.RELEASE} api=${Build.VERSION.SDK_INT}")
+    appendLine("bio=${if (PrivateVault.bioEnabled) Secret.bioSelfCheck() else "off"} blob=${SettingsStore.secretBio?.length ?: 0}")
 }
 
 private fun size(bytes: Long): String = when {

@@ -91,19 +91,32 @@ object Secret {
             .generateKey()
     }
 
+    // 两头必须对称：这里加的是 32 字节原始密钥，解出来也得是原始密钥
     fun bioWrap(dataKey: ByteArray): String? = runCatching {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, bioKey()) }
         "$BIO_PREFIX:${encoder.encodeToString(cipher.iv)}:${encoder.encodeToString(cipher.doFinal(dataKey))}"
     }.getOrNull()
 
+    // 解不开时把原因留着，界面上直接显示，省得靠猜
+    var bioError: String? = null
+        private set
+
     fun bioUnwrap(blob: String): ByteArray? = runCatching {
         val parts = blob.split(':')
-        require(parts.size == 3 && parts[0] == BIO_PREFIX)
+        require(parts.size == 3 && parts[0] == BIO_PREFIX) { "格式 $parts" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.DECRYPT_MODE, bioKey(), GCMParameterSpec(TAG_BITS, decoder.decode(parts[1])))
         }
-        decoder.decode(cipher.doFinal(decoder.decode(parts[2])))
-    }.getOrNull()
+        cipher.doFinal(decoder.decode(parts[2]))
+    }.onFailure { bioError = "${it.javaClass.simpleName}: ${it.message}" }.getOrNull()
+
+    // 这台设备上那把钥匙能不能原样来回：解不开时先看这个
+    fun bioSelfCheck(): String = runCatching {
+        val probe = newDataKey()
+        val blob = bioWrap(probe) ?: return "wrap=null"
+        val back = bioUnwrap(blob) ?: return "unwrap=null (${bioError})"
+        if (back.contentEquals(probe)) "ok" else "mismatch"
+    }.getOrElse { "${it.javaClass.simpleName}: ${it.message}" }
 
     // 老版本留下来的 blob（别的钥匙包的）直接当没有，别再让它报「指纹用不了了」
     fun bioLooksValid(blob: String): Boolean = blob.startsWith("$BIO_PREFIX:")
